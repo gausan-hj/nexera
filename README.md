@@ -2,8 +2,8 @@
 
 **A growing workspace plugin for [DeepSeek Harness](https://github.com/deepseek-ai).**
 
-> Version `1.0.0-beta` — the first public slice. Nexera will collect several small,
-> sharp workspace tools; today it ships one of them: **shared sticky notes**.
+> Version `1.1.0-beta`. Nexera will collect several small, sharp workspace tools;
+> today it ships one of them: **shared sticky notes with agent memory**.
 
 ---
 
@@ -56,19 +56,37 @@ New notes default to `All chats`; one click makes one private again.
 
 ## Install
 
-Nexera is a DSH bundle. Point the plugin manager at this directory:
+### From GitHub (one link)
+
+The repository *is* the bundle, so pnpm can install it straight from the link:
+
+```
+https://github.com/gausan-hj/nexera
+```
+
+Point DSH at it — through the plugin manager, or by handing the link to the agent:
+
+```
+install_bundle  target: github:gausan-hj/nexera
+```
+
+pnpm clones the repository, reads `package.json`, and the bundle patch inserts the
+single `nexera` row. Pin a release instead of tracking `main` with
+`github:gausan-hj/nexera#v1.1.0-beta`.
+
+### From this folder
 
 ```
 Settings → Plugins → Add plugin → <path to this folder>
 ```
 
-or, from an agent session with the `plugin_manager` tool:
+or:
 
 ```
 install_bundle  target: <path to this folder>
 ```
 
-The bundle patch inserts one row named `nexera`.
+Either route inserts one row named `nexera`.
 
 ## Where the data lives
 
