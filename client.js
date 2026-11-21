@@ -1,9 +1,9 @@
 /**
- * Client half of Nexera, a DSH workspace plugin. First feature: shared sticky notes.
+ * Client half of Nexera, a DSH workspace plugin.
  *
- * Registers one sidebar panel row and the board it opens in the main column:
- * a wall of taped-up note cards, plus an editor that saves and returns.
- * All note data lives on the Host, so every open page shares the same wall.
+ * One sidebar row opens a workbench with four tabs: sticky notes (with AI memory),
+ * tasks (a three-column board), a reading list, and a workday view that shows the
+ * live clock plus what is due and what changed today.
  */
 window.__ModuleLoader__.load({
   id: '@local/nexera',
@@ -21,7 +21,6 @@ window.__ModuleLoader__.load({
     const SAVE_DELAY_MS = 700
     const MAX_SAVE_RETRIES = 4
 
-    /** Candy paper palette: every note keeps its own pastel sheet in both themes. */
     const PAPERS = [
       { zh: '奶油黄', en: 'Butter', bg: '#FFF3C4', ink: '#5A4413', edge: '#FFD666', tint: 'rgba(255,214,102,.18)' },
       { zh: '樱花粉', en: 'Sakura', bg: '#FFE3EE', ink: '#5C2542', edge: '#FFB3D1', tint: 'rgba(255,179,209,.18)' },
@@ -31,25 +30,41 @@ window.__ModuleLoader__.load({
       { zh: '蜜桃橙', en: 'Peach', bg: '#FFE8D6', ink: '#5C2E13', edge: '#FFBB8A', tint: 'rgba(255,187,138,.18)' },
     ]
 
+    const STATUSES = ['todo', 'doing', 'done']
+    const PRIORITIES = ['low', 'normal', 'high']
+
     const DICT = {
       zh: {
         button: '便利贴',
-        title: '便利贴',
+        title: '工作台',
+        tabNotes: '便利贴',
+        tabTasks: '任务',
+        tabLinks: '阅读',
+        tabToday: '工作日',
         add: '新建',
-        addLong: '新建便利贴',
-        editTitle: '写便利贴',
-        empty: '还没有便利贴',
-        emptyHint: '点右上角「新建便利贴」，写下要记住的事。',
+        addNote: '新建便利贴',
+        addTask: '新建任务',
+        addLink: '新建阅读',
+        editNote: '写便利贴',
+        editTask: '写任务',
+        editLink: '收藏链接',
+        emptyNotes: '还没有便利贴',
+        emptyNotesHint: '点右上角「新建便利贴」，写下要记住的事。',
+        emptyTasks: '还没有任务',
+        emptyTasksHint: '点右上角「新建任务」，把要做的事记下来。',
+        emptyLinks: '阅读清单是空的',
+        emptyLinksHint: '点右上角「新建阅读」，收藏一个链接。',
         emptyBody: '还没有内容',
         titlePlaceholder: '标题',
-        bodyPlaceholder: '写点什么，让以后还记得…',
+        bodyPlaceholder: '写点什么…',
+        urlPlaceholder: 'https://…',
         done: '完成',
         back: '返回',
         delete: '删除',
         confirmDelete: '再点一次删除',
         invite: '邀请',
         inviteTitle: '一起写',
-        inviteBody: '对方在能访问这个 DSH 页面的另一台设备或另一个浏览器里打开这个链接，就能和你编辑同一批便利贴。',
+        inviteBody: '对方在能访问这个 DSH 页面的另一台设备或另一个浏览器里打开这个链接，就能和你编辑同一个工作台。',
         inviteLocal: '当前地址只在本机有效，别人的浏览器打不开。要邀请别人，请先把 DSH 绑定到局域网地址再分享。',
         copy: '复制链接',
         copied: '已复制',
@@ -61,50 +76,86 @@ window.__ModuleLoader__.load({
         onlineOne: '另有 1 人在线',
         onlineMany: '另有 {n} 人在线',
         alone: '只有你在编辑',
-        conflictTitle: '有人先改了这张便利贴',
+        conflictTitle: '有人先改了这条',
         conflictBody: '为了不覆盖对方，你的这次修改还没有保存。',
         conflictLoad: '载入对方的版本',
         conflictOverwrite: '仍用我的覆盖',
-        deletedTitle: '这张便利贴被其他人删除了',
-        deletedBody: '你的内容还在，可以把它另存为一张新的便利贴。',
-        deletedKeep: '另存为新便利贴',
+        deletedTitle: '这条被其他人删除了',
+        deletedBody: '你的内容还在，可以把它另存为新的一条。',
+        deletedKeep: '另存为新的',
         deletedDiscard: '放弃内容',
         nameLabel: '我的名字',
         colorLabel: '颜色',
         kindNote: '普通',
         kindMemory: '记忆',
-        kindHint: '记忆便签用来记你的性格和最喜欢做的事，每个对话里 AI 都会读到。',
+        kindHint: '记忆用来记你的性格和最喜欢做的事，每个对话里 AI 都会读到。',
         scopeLabel: 'AI 读取范围',
-        scopeHint: '这张便利贴对哪些对话里的 AI 可见。',
+        scopeHint: '这条对哪些对话里的 AI 可见。',
         scopeOff: '不读取',
         scopeAll: '所有对话',
         scopeWorkspace: '仅某个工作区',
         scopePick: '选择工作区…',
+        statusLabel: '状态',
+        statusTodo: '待办',
+        statusDoing: '进行中',
+        statusDone: '已完成',
+        priorityLabel: '优先级',
+        priorityLow: '低',
+        priorityNormal: '普通',
+        priorityHigh: '高',
+        dueLabel: '截止日期',
+        estimateLabel: '预计用时（分钟）',
+        urlLabel: '链接',
+        readLabel: '已读',
+        unread: '未读',
+        read: '已读',
+        overdue: '已逾期',
+        dueToday: '今天到期',
+        minutes: '{n} 分钟',
+        todayTitle: '今天',
+        todayDue: '今天到期',
+        todayOverdue: '已逾期',
+        todayChanged: '今天有改动',
+        nothing: '没有',
         justNow: '刚刚',
         minutesAgo: '{n} 分钟前',
         hoursAgo: '{n} 小时前',
-        noteCount: '{n} 张',
         untitled: '未命名',
+        items: '{n} 项',
         retry: '重试',
+        weekdays: ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'],
       },
       en: {
         button: 'Sticky notes',
-        title: 'Sticky notes',
+        title: 'Workbench',
+        tabNotes: 'Notes',
+        tabTasks: 'Tasks',
+        tabLinks: 'Reading',
+        tabToday: 'Workday',
         add: 'New',
-        addLong: 'New note',
-        editTitle: 'Write a note',
-        empty: 'No notes yet',
-        emptyHint: 'Use "New note" in the top right and write down what you want to remember.',
+        addNote: 'New note',
+        addTask: 'New task',
+        addLink: 'New link',
+        editNote: 'Write a note',
+        editTask: 'Write a task',
+        editLink: 'Save a link',
+        emptyNotes: 'No notes yet',
+        emptyNotesHint: 'Use "New note" in the top right.',
+        emptyTasks: 'No tasks yet',
+        emptyTasksHint: 'Use "New task" in the top right.',
+        emptyLinks: 'The reading list is empty',
+        emptyLinksHint: 'Use "New link" in the top right.',
         emptyBody: 'No content yet',
         titlePlaceholder: 'Title',
-        bodyPlaceholder: 'Write something to remember…',
+        bodyPlaceholder: 'Write something…',
+        urlPlaceholder: 'https://…',
         done: 'Done',
         back: 'Back',
         delete: 'Delete',
         confirmDelete: 'Click again to delete',
         invite: 'Invite',
         inviteTitle: 'Write together',
-        inviteBody: 'Someone on another device or in another browser that can reach this DSH page will edit the same notes when they open this link.',
+        inviteBody: 'Someone on another device or in another browser that can reach this DSH page will edit the same workbench.',
         inviteLocal: 'This address only works on this machine. To invite someone, expose DSH on a network address first.',
         copy: 'Copy link',
         copied: 'Copied',
@@ -116,31 +167,54 @@ window.__ModuleLoader__.load({
         onlineOne: '1 other person online',
         onlineMany: '{n} other people online',
         alone: "You're the only one here",
-        conflictTitle: 'Someone changed this note first',
+        conflictTitle: 'Someone changed this first',
         conflictBody: 'Your change was not saved, so theirs is not overwritten.',
         conflictLoad: 'Load their version',
         conflictOverwrite: 'Overwrite with mine',
-        deletedTitle: 'Someone deleted this note',
-        deletedBody: 'Your text is still here — you can keep it as a new note.',
-        deletedKeep: 'Save as a new note',
+        deletedTitle: 'Someone deleted this',
+        deletedBody: 'Your text is still here — you can keep it as a new item.',
+        deletedKeep: 'Save as new',
         deletedDiscard: 'Discard',
         nameLabel: 'My name',
         colorLabel: 'Colour',
         kindNote: 'Note',
         kindMemory: 'Memory',
-        kindHint: 'Memory notes hold your personality and what you love doing; the assistant reads them in every conversation.',
+        kindHint: 'Memory holds your personality and what you love doing; the assistant reads it in every conversation.',
         scopeLabel: 'AI scope',
-        scopeHint: 'Which conversations may read this note.',
+        scopeHint: 'Which conversations may read this.',
         scopeOff: 'Private',
         scopeAll: 'All chats',
         scopeWorkspace: 'One workspace',
         scopePick: 'Pick a workspace…',
+        statusLabel: 'Status',
+        statusTodo: 'To do',
+        statusDoing: 'Doing',
+        statusDone: 'Done',
+        priorityLabel: 'Priority',
+        priorityLow: 'Low',
+        priorityNormal: 'Normal',
+        priorityHigh: 'High',
+        dueLabel: 'Due date',
+        estimateLabel: 'Estimate (min)',
+        urlLabel: 'Link',
+        readLabel: 'Read',
+        unread: 'Unread',
+        read: 'Read',
+        overdue: 'Overdue',
+        dueToday: 'Due today',
+        minutes: '{n} min',
+        todayTitle: 'Today',
+        todayDue: 'Due today',
+        todayOverdue: 'Overdue',
+        todayChanged: 'Changed today',
+        nothing: 'Nothing',
         justNow: 'just now',
         minutesAgo: '{n} min ago',
         hoursAgo: '{n} h ago',
-        noteCount: '{n} notes',
         untitled: 'Untitled',
+        items: '{n} items',
         retry: 'Retry',
+        weekdays: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
       },
     }
 
@@ -202,11 +276,10 @@ window.__ModuleLoader__.load({
       return generated
     }
 
-    function newNoteId() {
-      return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    function newId(prefix) {
+      return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     }
 
-    /** Stable tilt, so a note hangs at the same angle on every page and reload. */
     function tiltOf(note) {
       const id = String(note?.id ?? '')
       let acc = 3
@@ -214,7 +287,6 @@ window.__ModuleLoader__.load({
       return ((acc % 9) - 4) * 0.55
     }
 
-    /** Stable paper tint even before the Host learns about a colour. */
     function colorOf(note) {
       if (Number.isInteger(note?.color) && note.color >= 0 && note.color < PAPERS.length) return note.color
       const id = String(note?.id ?? '')
@@ -223,15 +295,56 @@ window.__ModuleLoader__.load({
       return acc % PAPERS.length
     }
 
+    function normalizeKind(kind) {
+      return kind === 'memory' || kind === 'task' || kind === 'link' ? kind : 'note'
+    }
+
+    function pad2(value) {
+      return String(value).padStart(2, '0')
+    }
+
+    function dateInputValue(ms) {
+      if (!Number.isFinite(ms) || ms <= 0) return ''
+      const d = new Date(ms)
+      return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    }
+
+    function fromDateInput(value) {
+      if (typeof value !== 'string' || value === '') return 0
+      const ms = Date.parse(`${value}T12:00:00`)
+      return Number.isFinite(ms) ? ms : 0
+    }
+
+    function startOfDay(ms) {
+      const d = new Date(ms)
+      d.setHours(0, 0, 0, 0)
+      return d.getTime()
+    }
+
+    function shortDate(ms) {
+      const d = new Date(ms)
+      return `${d.getMonth() + 1}/${d.getDate()}`
+    }
+
+    function isLocalOrigin() {
+      try {
+        const host = window.location.hostname
+        return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
+      } catch {
+        return true
+      }
+    }
+
     // ---------------------------------------------------------------- store
 
     function createStore() {
       let state = {
         mounted: false,
+        tab: 'notes',
         view: 'wall',
-        ready: false,
         notes: [],
         peers: [],
+        workspaces: [],
         activeId: null,
         title: '',
         body: '',
@@ -239,11 +352,15 @@ window.__ModuleLoader__.load({
         kind: 'note',
         aiMode: 'off',
         aiWorkspaceId: '',
-        workspaces: [],
+        status: 'todo',
+        priority: 'normal',
+        dueAt: 0,
+        estimateMin: 0,
+        url: '',
+        read: false,
         baseRev: 0,
         dirty: false,
-        status: 'idle',
-        /** @type {null | {current: object}} */
+        status2: 'idle',
         conflict: null,
         deletedNotice: false,
         error: '',
@@ -291,6 +408,12 @@ window.__ModuleLoader__.load({
           kind: 'note',
           aiMode: 'off',
           aiWorkspaceId: '',
+          status: 'todo',
+          priority: 'normal',
+          dueAt: 0,
+          estimateMin: 0,
+          url: '',
+          read: false,
           baseRev: 0,
           dirty: false,
           conflict: null,
@@ -299,25 +422,44 @@ window.__ModuleLoader__.load({
       }
 
       function isBlankDraft() {
-        return state.baseRev === 0 && state.title.trim() === '' && state.body.trim() === ''
+        return state.baseRev === 0
+          && state.title.trim() === ''
+          && state.body.trim() === ''
+          && state.url.trim() === ''
+      }
+
+      function applyItemToDraft(item) {
+        return {
+          title: item.title,
+          body: item.body,
+          color: colorOf(item),
+          kind: normalizeKind(item.kind),
+          aiMode: item.aiMode ?? 'off',
+          aiWorkspaceId: item.aiWorkspaceId ?? '',
+          status: item.status ?? 'todo',
+          priority: item.priority ?? 'normal',
+          dueAt: Number(item.dueAt) || 0,
+          estimateMin: Number(item.estimateMin) || 0,
+          url: item.url ?? '',
+          read: item.read === true,
+          baseRev: item.rev,
+        }
       }
 
       function accept(data) {
         const notes = Array.isArray(data.notes) ? data.notes : []
         const peers = Array.isArray(data.peers) ? data.peers : []
         const next = {
-          ready: true,
           notes,
           peers,
           workspaces: Array.isArray(data.workspaces) ? data.workspaces : state.workspaces,
           error: '',
-          status: state.status === 'offline' ? 'idle' : state.status,
+          status2: state.status2 === 'offline' ? 'idle' : state.status2,
         }
 
         if (state.activeId !== null) {
           const active = notes.find((note) => note.id === state.activeId) ?? null
           if (active === null) {
-            // A never-saved draft is not missing: it simply is not on the Host yet.
             if (state.baseRev > 0) {
               if (state.dirty) next.deletedNotice = true
               else Object.assign(next, resetDraft())
@@ -327,13 +469,7 @@ window.__ModuleLoader__.load({
           } else if (state.dirty) {
             if (active.rev !== state.baseRev) next.conflict = { current: { ...active } }
           } else if (state.conflict === null) {
-            next.title = active.title
-            next.body = active.body
-            next.color = colorOf(active)
-            next.kind = active.kind === 'memory' ? 'memory' : 'note'
-            next.aiMode = active.aiMode ?? 'off'
-            next.aiWorkspaceId = active.aiWorkspaceId ?? ''
-            next.baseRev = active.rev
+            Object.assign(next, applyItemToDraft(active))
           }
         }
 
@@ -353,7 +489,7 @@ window.__ModuleLoader__.load({
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           accept(await response.json())
         } catch (error) {
-          patch({ status: 'offline', error: String(error?.message ?? error) })
+          patch({ status2: 'offline', error: String(error?.message ?? error) })
         }
       }
 
@@ -367,7 +503,6 @@ window.__ModuleLoader__.load({
         }, 1500 * retries)
       }
 
-      /** Returns whether the draft is now safe on the Host. */
       async function saveNow(options = {}) {
         if (state.activeId === null) return true
         if (state.conflict !== null) return false
@@ -381,9 +516,15 @@ window.__ModuleLoader__.load({
           kind: state.kind,
           aiMode: state.aiMode,
           aiWorkspaceId: state.aiWorkspaceId,
+          status: state.status,
+          priority: state.priority,
+          dueAt: state.dueAt,
+          estimateMin: state.estimateMin,
+          url: state.url,
+          read: state.read,
           baseRev: state.baseRev,
         }
-        patch({ status: 'saving' })
+        patch({ status2: 'saving' })
 
         try {
           const response = await fetch(API_PATH, {
@@ -392,19 +533,7 @@ window.__ModuleLoader__.load({
             body: JSON.stringify({
               client: clientId,
               name: state.me,
-              op: {
-                type: 'save',
-                note: {
-                  id: target,
-                  title: sent.title,
-                  body: sent.body,
-                  color: sent.color,
-                  kind: sent.kind,
-                  aiMode: sent.aiMode,
-                  aiWorkspaceId: sent.aiWorkspaceId,
-                  baseRev: sent.baseRev,
-                },
-              },
+              op: { type: 'save', note: { id: target, ...sent } },
             }),
           })
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -419,14 +548,14 @@ window.__ModuleLoader__.load({
           }
 
           if (data.deleted === true) {
-            if (state.activeId === target) patch({ ...shared, status: 'saved', deletedNotice: true, dirty: true })
+            if (state.activeId === target) patch({ ...shared, status2: 'saved', deletedNotice: true, dirty: true })
             else patch(shared)
             return false
           }
 
           if (data.conflict === true && data.current !== undefined) {
             if (state.activeId === target) {
-              patch({ ...shared, status: 'unsaved', conflict: { current: { ...data.current } } })
+              patch({ ...shared, status2: 'unsaved', conflict: { current: { ...data.current } } })
             } else {
               patch(shared)
             }
@@ -434,19 +563,15 @@ window.__ModuleLoader__.load({
           }
 
           if (state.activeId !== target) {
-            patch({ ...shared, status: 'saved' })
+            patch({ ...shared, status2: 'saved' })
             return true
           }
 
-          const stillSame = state.title === sent.title
-            && state.body === sent.body
-            && state.color === sent.color
-            && state.kind === sent.kind
-            && state.aiMode === sent.aiMode
-            && state.aiWorkspaceId === sent.aiWorkspaceId
+          const keys = Object.keys(sent)
+          const stillSame = keys.every((key) => state[key] === sent[key])
           patch({
             ...shared,
-            status: stillSame ? 'saved' : 'unsaved',
+            status2: stillSame ? 'saved' : 'unsaved',
             dirty: !stillSame,
             baseRev: Number(data.note?.rev ?? state.baseRev),
             conflict: null,
@@ -454,7 +579,7 @@ window.__ModuleLoader__.load({
           if (!stillSame) scheduleSave()
           return true
         } catch (error) {
-          patch({ status: 'offline', error: String(error?.message ?? error) })
+          patch({ status2: 'offline', error: String(error?.message ?? error) })
           if (!options.retry || retries < MAX_SAVE_RETRIES) scheduleRetry()
           return false
         }
@@ -476,6 +601,11 @@ window.__ModuleLoader__.load({
           if (typeof document === 'undefined' || document.visibilityState !== 'hidden') void refresh()
           schedulePoll()
         }, delay)
+      }
+
+      function edit(patchValue) {
+        patch({ ...patchValue, dirty: true, status2: 'unsaved' })
+        scheduleSave()
       }
 
       return {
@@ -502,12 +632,20 @@ window.__ModuleLoader__.load({
           pollTimer = 0
           saveTimer = 0
         },
-        /** The board page mounts while its sidebar row is the selected panel. */
         setMounted(mounted) {
           if (state.mounted === mounted) return
-          patch({ mounted, unread: mounted ? 0 : state.unread, seenAt: mounted ? latestUpdate(state.notes) : state.seenAt })
+          patch({
+            mounted,
+            unread: mounted ? 0 : state.unread,
+            seenAt: mounted ? latestUpdate(state.notes) : state.seenAt,
+          })
           if (mounted) void refresh()
           schedulePoll()
+        },
+        setTab(tab) {
+          if (state.tab === tab) return
+          if (state.dirty) void saveNow()
+          patch({ tab, view: 'wall', ...resetDraft() })
         },
         openNote(id) {
           const note = state.notes.find((item) => item.id === id)
@@ -515,67 +653,94 @@ window.__ModuleLoader__.load({
           patch({
             view: 'edit',
             activeId: id,
-            title: note.title,
-            body: note.body,
-            color: colorOf(note),
-            kind: note.kind === 'memory' ? 'memory' : 'note',
-            aiMode: note.aiMode ?? 'off',
-            aiWorkspaceId: note.aiWorkspaceId ?? '',
-            baseRev: note.rev,
             dirty: false,
             conflict: null,
             deletedNotice: false,
+            ...applyItemToDraft(note),
           })
         },
         create() {
-          const id = newNoteId()
+          const kind = state.tab === 'tasks' ? 'task' : state.tab === 'links' ? 'link' : 'note'
+          const id = newId(kind === 'task' ? 'task' : kind === 'link' ? 'link' : 'note')
           patch({
             view: 'edit',
             activeId: id,
             title: '',
             body: '',
             color: colorOf({ id }),
-            kind: 'note',
-            aiMode: 'all',
+            kind,
+            aiMode: kind === 'task' || kind === 'link' ? 'off' : 'all',
             aiWorkspaceId: '',
+            status: 'todo',
+            priority: 'normal',
+            dueAt: 0,
+            estimateMin: 0,
+            url: '',
+            read: false,
             baseRev: 0,
             dirty: false,
             conflict: null,
             deletedNotice: false,
           })
         },
-        editTitle(value) {
-          patch({ title: value, dirty: true, status: 'unsaved' })
-          scheduleSave()
-        },
-        editBody(value) {
-          patch({ body: value, dirty: true, status: 'unsaved' })
-          scheduleSave()
-        },
+        editTitle: (value) => edit({ title: value }),
+        editBody: (value) => edit({ body: value }),
+        editUrl: (value) => edit({ url: value }),
         setColor(color) {
           if (color === state.color) return
-          patch({ color, dirty: true, status: 'unsaved' })
-          scheduleSave()
+          edit({ color })
         },
         setAiMode(aiMode, aiWorkspaceId) {
           const nextMode = aiMode === 'all' || aiMode === 'workspace' ? aiMode : 'off'
           const nextWorkspace = nextMode === 'workspace' ? (aiWorkspaceId ?? state.aiWorkspaceId) : ''
           if (nextMode === state.aiMode && nextWorkspace === state.aiWorkspaceId) return
-          patch({ aiMode: nextMode, aiWorkspaceId: nextWorkspace, dirty: true, status: 'unsaved' })
-          scheduleSave()
+          edit({ aiMode: nextMode, aiWorkspaceId: nextWorkspace })
         },
         setKind(kind) {
-          const nextKind = kind === 'memory' ? 'memory' : 'note'
+          const nextKind = normalizeKind(kind)
           if (nextKind === state.kind) return
-          patch({
-            kind: nextKind,
-            aiMode: nextKind === 'memory' ? 'all' : state.aiMode,
-            dirty: true,
-            status: 'unsaved',
-          })
+          edit({ kind: nextKind, aiMode: nextKind === 'memory' ? 'all' : state.aiMode })
+        },
+        setStatus(status) {
+          if (status === state.status) return
+          edit({ status })
+        },
+        setPriority(priority) {
+          if (priority === state.priority) return
+          edit({ priority })
+        },
+        setDueAt(value) {
+          const dueAt = fromDateInput(value)
+          if (dueAt === state.dueAt) return
+          edit({ dueAt })
+        },
+        setEstimateMin(value) {
+          const parsed = Number.parseInt(String(value), 10)
+          const estimateMin = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+          if (estimateMin === state.estimateMin) return
+          edit({ estimateMin })
+        },
+        setRead(read) {
+          if (read === state.read) return
+          edit({ read })
+        },
+        resolveConflict(choice) {
+          const pending = state.conflict
+          if (pending === null) return
+          if (choice === 'theirs') {
+            patch({ ...applyItemToDraft(pending.current), dirty: false, conflict: null, status2: 'saved' })
+          } else {
+            patch({ baseRev: pending.current.rev, conflict: null, status2: 'unsaved' })
+            void saveNow()
+          }
+        },
+        reviveDraft() {
+          patch({ activeId: newId('note'), baseRev: 0, dirty: true, deletedNotice: false, status2: 'unsaved' })
           scheduleSave()
         },
-        /** Finish the editor: persist, then come back to the wall. */
+        dropDraft() {
+          patch({ ...resetDraft(), view: 'wall' })
+        },
         async done() {
           if (state.view !== 'edit') return
           if (isBlankDraft()) {
@@ -586,43 +751,6 @@ window.__ModuleLoader__.load({
           const saved = await saveNow()
           if (!saved) return
           patch({ view: 'wall', dirty: false })
-        },
-        resolveConflict(choice) {
-          const pending = state.conflict
-          if (pending === null) return
-          if (choice === 'theirs') {
-            patch({
-              title: pending.current.title,
-              body: pending.current.body,
-              color: colorOf(pending.current),
-              kind: pending.current.kind === 'memory' ? 'memory' : 'note',
-              aiMode: pending.current.aiMode ?? 'off',
-              aiWorkspaceId: pending.current.aiWorkspaceId ?? '',
-              baseRev: pending.current.rev,
-              dirty: false,
-              conflict: null,
-              status: 'saved',
-            })
-          } else {
-            patch({ baseRev: pending.current.rev, conflict: null, status: 'unsaved' })
-            void saveNow()
-          }
-        },
-        reviveDraft() {
-          patch({
-            activeId: newNoteId(),
-            kind: 'note',
-            aiMode: 'all',
-            aiWorkspaceId: '',
-            baseRev: 0,
-            dirty: true,
-            deletedNotice: false,
-            status: 'unsaved',
-          })
-          scheduleSave()
-        },
-        dropDraft() {
-          patch({ ...resetDraft(), view: 'wall' })
         },
         async remove() {
           const id = state.activeId
@@ -638,7 +766,7 @@ window.__ModuleLoader__.load({
             const data = await response.json()
             patch({ notes: Array.isArray(data.notes) ? data.notes : state.notes })
           } catch (error) {
-            patch({ status: 'offline', error: String(error?.message ?? error) })
+            patch({ status2: 'offline', error: String(error?.message ?? error) })
           }
         },
         setMe(name) {
@@ -664,9 +792,9 @@ window.__ModuleLoader__.load({
     }
 
     function effectiveStatus(state) {
-      if (state.status === 'offline') return 'offline'
+      if (state.status2 === 'offline') return 'offline'
       if (state.dirty) return 'unsaved'
-      if (state.status === 'saving') return 'saving'
+      if (state.status2 === 'saving') return 'saving'
       return 'saved'
     }
 
@@ -683,16 +811,11 @@ window.__ModuleLoader__.load({
       if (!Number.isFinite(diff) || diff < 60_000) return t('justNow')
       if (diff < 3_600_000) return t('minutesAgo', { n: Math.floor(diff / 60_000) })
       if (diff < 86_400_000) return t('hoursAgo', { n: Math.floor(diff / 3_600_000) })
-      return new Date(ms).toLocaleDateString()
+      return shortDate(ms)
     }
 
-    function isLocalOrigin() {
-      try {
-        const host = window.location.hostname
-        return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]'
-      } catch {
-        return true
-      }
+    function byKind(state, ...kinds) {
+      return state.notes.filter((note) => kinds.includes(normalizeKind(note.kind)))
     }
 
     // ------------------------------------------------------------------ CSS
@@ -710,7 +833,7 @@ ${PALETTE_CSS}
 .dsn-icon-dot[data-tone="error"]{background:#FF6B6B}
 
 .dsn-page{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,#fff);color:var(--dsn-ink);font:inherit;font-size:13px;line-height:1.55}
-.dsn-page-head{display:flex;align-items:center;gap:12px;padding:14px 22px 13px;border-bottom:1px solid var(--dsn-line);background:linear-gradient(180deg,rgba(255,214,102,.20),rgba(255,214,102,0));flex:none}
+.dsn-page-head{display:flex;align-items:center;gap:12px;padding:14px 22px 12px;border-bottom:1px solid var(--dsn-line);background:linear-gradient(180deg,rgba(255,214,102,.20),rgba(255,214,102,0));flex:none}
 .dsn-badge{width:30px;height:30px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,#FFD666,#FF9F68);color:#fff;box-shadow:0 4px 12px rgba(255,159,104,.42)}
 .dsn-head-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
 .dsn-heading{margin:0;font-size:15.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
@@ -719,6 +842,12 @@ ${PALETTE_CSS}
 .dsn-pill[data-live="true"]{background:rgba(63,196,124,.18)}
 .dsn-pill[data-live="true"] .dsn-pill-dot{background:#3FC47C;box-shadow:0 0 0 3px rgba(63,196,124,.22)}
 .dsn-head-actions{display:flex;align-items:center;gap:8px;flex:none}
+
+.dsn-tabs{display:flex;align-items:center;gap:4px;padding:8px 18px 0;flex:none;border-bottom:1px solid var(--dsn-line)}
+.dsn-tab{height:32px;padding:0 14px;border:0;border-bottom:2.5px solid transparent;background:transparent;color:var(--dsn-ink2);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:color .15s ease,border-color .15s ease}
+.dsn-tab:hover{color:var(--dsn-ink)}
+.dsn-tab[data-active="true"]{color:var(--dsn-ink);border-bottom-color:#FFB13D}
+.dsn-tab:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:-2px}
 
 .dsn-btn{height:30px;padding:0 14px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--dsn-line);border-radius:999px;background:transparent;color:var(--dsn-ink);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;transition:transform .18s var(--dsn-bounce),box-shadow .18s ease,background .16s ease}
 .dsn-btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px rgba(0,0,0,.12)}
@@ -738,14 +867,13 @@ ${PALETTE_CSS}
 
 .dsn-screen{flex:1;min-height:0;display:flex;flex-direction:column;animation:dsn-fade .18s ease both}
 @keyframes dsn-fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-
-.dsn-toolbar{display:flex;align-items:center;gap:10px;padding:14px 22px 2px;flex:none}
+.dsn-toolbar{display:flex;align-items:center;gap:10px;padding:12px 22px 2px;flex:none}
 .dsn-toolbar .dsn-count{margin-right:auto;font-size:11.5px;font-weight:600;color:var(--dsn-ink2)}
+.dsn-scroll{flex:1;min-height:0;overflow-y:auto;padding:16px 22px 30px;scrollbar-width:thin}
+.dsn-scroll::-webkit-scrollbar{width:8px}
+.dsn-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:99px}
 
-.dsn-grid{flex:1;min-height:0;overflow-y:auto;padding:26px 22px 34px;display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:24px 18px;align-content:start;scrollbar-width:thin;background:radial-gradient(circle at 50% -16%,rgba(255,214,102,.17),rgba(255,214,102,0) 62%)}
-.dsn-grid::-webkit-scrollbar{width:8px}
-.dsn-grid::-webkit-scrollbar-thumb{background:rgba(0,0,0,.16);border-radius:99px}
-
+.dsn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:24px 18px;align-content:start;background:radial-gradient(circle at 50% -16%,rgba(255,214,102,.17),rgba(255,214,102,0) 62%)}
 .dsn-card{position:relative;display:block;aspect-ratio:1/1;padding:0;border:0;border-radius:var(--dsn-r-md);background:linear-gradient(178deg,rgba(255,255,255,.55),rgba(255,255,255,0) 26%,rgba(0,0,0,.05)),var(--paper-bg,#FFF3C4);color:var(--paper-ink,#5A4413);font:inherit;cursor:pointer;box-shadow:1px 5px 12px rgba(0,0,0,.17),0 1px 2px rgba(0,0,0,.10);rotate:var(--tilt,0deg);translate:0 0;scale:1;transform-origin:50% 10%;transition:rotate .28s var(--dsn-bounce),translate .28s var(--dsn-bounce),scale .28s var(--dsn-bounce),box-shadow .22s ease;animation:dsn-drop .42s var(--dsn-bounce) backwards;animation-delay:var(--delay,0ms)}
 @keyframes dsn-drop{0%{opacity:0;translate:0 -22px;scale:.9}70%{opacity:1}100%{opacity:1;translate:0 0;scale:1}}
 .dsn-card-tape{position:absolute;top:-8px;left:50%;width:64px;height:19px;translate:-50% 0;rotate:-2.6deg;border-radius:3px;background:linear-gradient(180deg,rgba(255,255,255,.88),rgba(255,255,255,.52));border-left:1px solid rgba(255,255,255,.65);border-right:1px solid rgba(255,255,255,.65);box-shadow:0 2px 6px rgba(0,0,0,.16);pointer-events:none}
@@ -761,21 +889,62 @@ ${PALETTE_CSS}
 .dsn-card-ai[data-mode="workspace"]{border-style:dashed;opacity:.6}
 .dsn-card-ai[data-mode="memory"]{font-size:10px;letter-spacing:0;opacity:.95}
 
-.dsn-edit{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 26px 18px;gap:12px;background:linear-gradient(180deg,var(--paper-tint,rgba(255,214,102,.18)),rgba(0,0,0,0) 170px)}
+.dsn-board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:start}
+.dsn-col{display:flex;flex-direction:column;gap:9px;min-width:0}
+.dsn-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px 2px;font-size:11.5px;font-weight:700;color:var(--dsn-ink2);letter-spacing:.02em}
+.dsn-col-count{font-variant-numeric:tabular-nums;opacity:.7}
+.dsn-task{display:block;width:100%;text-align:left;padding:11px 13px;border:1.5px solid var(--dsn-line);border-left:4px solid var(--paper-edge,#FFD666);border-radius:14px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsn-ink);font:inherit;cursor:pointer;transition:transform .18s var(--dsn-bounce),box-shadow .18s ease,border-color .15s ease}
+.dsn-task:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(0,0,0,.12)}
+.dsn-task:focus-visible{outline:3px solid var(--paper-edge,#FFD666);outline-offset:2px}
+.dsn-task[data-priority="high"]{border-left-color:#FF6B6B}
+.dsn-task[data-done="true"]{opacity:.55}
+.dsn-task[data-done="true"] .dsn-task-title{text-decoration:line-through}
+.dsn-task-title{display:block;font-size:12.5px;font-weight:700;line-height:1.4;word-break:break-word}
+.dsn-task-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px;font-size:10.5px;font-weight:600;color:var(--dsn-ink2)}
+.dsn-chip{padding:1px 7px;border-radius:999px;background:var(--dsn-surface-1)}
+.dsn-chip[data-tone="overdue"]{background:rgba(255,107,107,.18);color:#C93A3A}
+.dsn-chip[data-tone="today"]{background:rgba(255,177,61,.22);color:#9A5B00}
+
+.dsn-links{display:flex;flex-direction:column;gap:10px}
+.dsn-link{display:block;width:100%;text-align:left;padding:13px 15px;border:1.5px solid var(--dsn-line);border-radius:16px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsn-ink);font:inherit;cursor:pointer;transition:transform .18s var(--dsn-bounce),box-shadow .18s ease}
+.dsn-link:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(0,0,0,.12)}
+.dsn-link:focus-visible{outline:3px solid #FFD666;outline-offset:2px}
+.dsn-link[data-read="true"]{opacity:.6}
+.dsn-link-title{display:block;font-size:13px;font-weight:700;word-break:break-word}
+.dsn-link-url{display:block;margin-top:4px;font-size:11px;color:var(--dsn-ink2);word-break:break-all;font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace)}
+.dsn-link-foot{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10.5px;font-weight:600;color:var(--dsn-ink3)}
+
+.dsn-today{display:flex;flex-direction:column;gap:20px}
+.dsn-clock{padding:22px;border-radius:20px;background:linear-gradient(135deg,rgba(255,210,77,.22),rgba(255,159,104,.18));border:1.5px solid rgba(255,177,61,.35)}
+.dsn-clock-date{font-size:12.5px;font-weight:700;color:var(--dsn-ink2);letter-spacing:.02em}
+.dsn-clock-time{font-size:34px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:2px}
+.dsn-section{display:flex;flex-direction:column;gap:9px}
+.dsn-section-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--dsn-ink2)}
+.dsn-section-head::after{content:'';flex:1;height:1px;background:var(--dsn-line)}
+.dsn-none{font-size:12px;color:var(--dsn-ink3);padding:2px 0}
+
+.dsn-edit{flex:1;min-height:0;display:flex;flex-direction:column;padding:14px 26px 16px;gap:11px;background:linear-gradient(180deg,var(--paper-tint,rgba(255,214,102,.18)),rgba(0,0,0,0) 170px)}
 .dsn-edit-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
 .dsn-edit-swatches{display:flex;align-items:center;gap:9px;flex:none}
 .dsn-edit-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.dsn-kind{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1.5px solid var(--dsn-line);background:transparent;color:var(--dsn-ink2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease}
-.dsn-kind:hover{border-color:var(--dsn-ink3)}
-.dsn-kind:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:2px}
-.dsn-kind[data-memory="true"]{background:rgba(255,193,7,.2);border-color:rgba(255,193,7,.65);color:var(--dsn-ink)}
-.dsn-scope{height:26px;padding:0 8px;border-radius:8px;border:1.5px solid var(--dsn-line);background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;max-width:190px}
-.dsn-scope:focus{outline:none;border-color:#FFD666}
-.dsn-scope:disabled{opacity:.45;cursor:default}
 .dsn-swatch{width:24px;height:24px;padding:0;border:2.5px solid #fff;border-radius:50%;cursor:pointer;background:var(--paper-bg,#FFF3C4);box-shadow:0 3px 9px rgba(0,0,0,.18);transition:transform .2s var(--dsn-bounce),box-shadow .18s ease}
 .dsn-swatch:hover{transform:scale(1.16)}
 .dsn-swatch:focus-visible{outline:3px solid rgba(255,214,102,.95);outline-offset:2px}
 .dsn-swatch[aria-pressed="true"]{transform:scale(1.2);box-shadow:0 0 0 3px var(--paper-edge,#FFD666),0 4px 10px rgba(0,0,0,.18)}
+
+.dsn-kind{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1.5px solid var(--dsn-line);background:transparent;color:var(--dsn-ink2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.dsn-kind:hover{border-color:var(--dsn-ink3)}
+.dsn-kind:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:2px}
+.dsn-kind[data-memory="true"]{background:rgba(255,193,7,.2);border-color:rgba(255,193,7,.65);color:var(--dsn-ink)}
+.dsn-select{height:26px;padding:0 8px;border-radius:8px;border:1.5px solid var(--dsn-line);background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;max-width:200px}
+.dsn-select:focus{outline:none;border-color:#FFD666}
+
+.dsn-fields{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;flex:none}
+.dsn-field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.dsn-field-label{font-size:10.5px;font-weight:700;color:var(--dsn-ink3);letter-spacing:.02em}
+.dsn-input{height:28px;padding:0 9px;border-radius:8px;border:1.5px solid var(--dsn-line);background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:12px;font-weight:600}
+.dsn-input:focus{outline:none;border-color:#FFD666}
+.dsn-input-num{width:76px}
 
 .dsn-edit-title,.dsn-edit-body{width:100%;box-sizing:border-box;border:2px solid transparent;border-radius:var(--dsn-r-sm);background:transparent;color:var(--dsn-ink);font:inherit;transition:background .16s ease,border-color .16s ease}
 .dsn-edit-title{padding:8px 12px;font-size:24px;font-weight:800;letter-spacing:-.02em;flex:none}
@@ -783,6 +952,8 @@ ${PALETTE_CSS}
 .dsn-edit-title::placeholder,.dsn-edit-body::placeholder{color:var(--dsn-ink3)}
 .dsn-edit-title:hover,.dsn-edit-body:hover{background:var(--dsn-surface-1)}
 .dsn-edit-title:focus,.dsn-edit-body:focus{outline:none;border-color:var(--paper-edge,#FFD666);background:var(--dsn-surface-1)}
+.dsn-url-input{width:100%;box-sizing:border-box;padding:9px 12px;border-radius:12px;border:1.5px solid var(--dsn-line);background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:12.5px;font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);flex:none}
+.dsn-url-input:focus{outline:none;border-color:var(--paper-edge,#FFD666)}
 .dsn-edit-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11.5px;font-weight:600;color:var(--dsn-ink2);min-height:30px;flex:none}
 
 .dsn-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;color:var(--dsn-ink2);padding:24px}
@@ -801,21 +972,25 @@ ${PALETTE_CSS}
 .dsn-name input{width:120px;padding:5px 10px;border:1.5px solid var(--dsn-line);border-radius:999px;background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:11.5px;font-weight:600}
 .dsn-name input:focus{outline:none;border-color:#FFD666}
 
-.dsn-invite{margin:12px 22px 0;padding:13px 15px;border:1.5px solid var(--dsn-line);border-radius:var(--dsn-r-sm);background:var(--dsn-surface-1);flex:none}
+.dsn-invite{margin:10px 22px 0;padding:13px 15px;border:1.5px solid var(--dsn-line);border-radius:var(--dsn-r-sm);background:var(--dsn-surface-1);flex:none}
 .dsn-invite-title{font-weight:700;margin-bottom:4px;font-size:12.5px}
 .dsn-invite-body{color:var(--dsn-ink2);margin-bottom:10px;font-size:12px;line-height:1.6}
 .dsn-invite-warn{margin-bottom:10px;color:#D97706;font-size:11.5px;line-height:1.55;font-weight:600}
 .dsn-invite-row{display:flex;align-items:center;gap:8px}
 .dsn-invite-url{flex:1;min-width:0;padding:7px 12px;border:1.5px solid var(--dsn-line);border-radius:999px;background:var(--dsw-alias-bg-base,transparent);color:var(--dsn-ink2);font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-@media (prefers-reduced-motion:reduce){.dsn-screen,.dsn-card{animation:none !important}.dsn-btn,.dsn-swatch,.dsn-card{transition:none}}
-@media (max-width:700px){
+@media (prefers-reduced-motion:reduce){.dsn-screen,.dsn-card{animation:none !important}.dsn-btn,.dsn-swatch,.dsn-card,.dsn-task,.dsn-link{transition:none}}
+@media (max-width:760px){
 .dsn-page-head{padding:12px 14px 11px;gap:8px}
 .dsn-heading{font-size:14px}
-.dsn-grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:20px 12px;padding:22px 14px 26px}
+.dsn-tabs{padding:6px 12px 0;overflow-x:auto}
+.dsn-tab{padding:0 11px;font-size:12px}
+.dsn-toolbar{padding:10px 14px 2px}
+.dsn-scroll{padding:12px 14px 24px}
+.dsn-grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:20px 12px}
+.dsn-board{grid-template-columns:1fr}
 .dsn-edit{padding:12px 14px 14px}
 .dsn-edit-title{font-size:19px}
-.dsn-toolbar{padding:10px 14px 2px}
 .dsn-page-foot{flex-wrap:wrap;gap:8px;padding:9px 14px}
 .dsn-invite{margin:10px 14px 0}
 }
@@ -850,8 +1025,8 @@ ${PALETTE_CSS}
         'svg',
         {
           viewBox: '0 0 120 120',
-          width: 114,
-          height: 114,
+          width: 96,
+          height: 96,
           fill: 'none',
           className: 'dsn-empty-art',
           'aria-hidden': true,
@@ -868,7 +1043,6 @@ ${PALETTE_CSS}
       )
     }
 
-    /** The sidebar row icon; the shell owns the button, label, and selected state. */
     function PanelIcon({ size }) {
       const state = useSnapshot()
       const status = effectiveStatus(state)
@@ -947,57 +1121,72 @@ ${PALETTE_CSS}
       )
     }
 
-    function Wall({ state }) {
+    function Tabs({ state }) {
+      const tabs = [
+        { id: 'notes', label: t('tabNotes') },
+        { id: 'tasks', label: t('tabTasks') },
+        { id: 'links', label: t('tabLinks') },
+        { id: 'today', label: t('tabToday') },
+      ]
+      return h(
+        'nav',
+        { className: 'dsn-tabs', role: 'tablist' },
+        tabs.map((tab) => h('button', {
+          key: tab.id,
+          type: 'button',
+          role: 'tab',
+          className: 'dsn-tab',
+          'data-active': state.tab === tab.id ? 'true' : 'false',
+          'aria-selected': state.tab === tab.id ? 'true' : 'false',
+          onClick: () => store.setTab(tab.id),
+        }, tab.label)),
+      )
+    }
+
+    function NotesWall({ state }) {
+      const items = byKind(state, 'note', 'memory')
+      if (items.length === 0) {
+        return h(
+          'div',
+          { className: 'dsn-empty' },
+          h(EmptyArt),
+          h('div', { className: 'dsn-empty-title' }, t('emptyNotes')),
+          h('div', { className: 'dsn-empty-hint' }, t('emptyNotesHint')),
+        )
+      }
       return h(
         'div',
-        { className: 'dsn-screen' },
+        { className: 'dsn-scroll' },
         h(
           'div',
-          { className: 'dsn-toolbar' },
-          h('span', { className: 'dsn-count' }, t('noteCount', { n: state.notes.length })),
-          h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => store.create() }, t('addLong')),
-        ),
-        state.notes.length === 0
-          ? h(
-            'div',
-            { className: 'dsn-empty' },
-            h(EmptyArt),
-            h('div', { className: 'dsn-empty-title' }, t('empty')),
-            h('div', { className: 'dsn-empty-hint' }, t('emptyHint')),
-          )
-          : h(
-            'div',
-            { className: 'dsn-grid' },
-            state.notes.map((note, index) => {
-              const preview = String(note.body ?? '').replace(/\s+/g, ' ').trim()
-              return h(
-                'button',
-                {
-                  key: note.id,
-                  type: 'button',
-                  className: 'dsn-card',
-                  'data-color': colorOf(note),
-                  style: {
-                    '--tilt': `${tiltOf(note)}deg`,
-                    '--delay': `${Math.min(index, 12) * 46}ms`,
-                  },
-                  onClick: () => store.openNote(note.id),
-                },
-                h('span', { className: 'dsn-card-tape', 'aria-hidden': true }),
+          { className: 'dsn-grid' },
+          items.map((note, index) => {
+            const preview = String(note.body ?? '').replace(/\s+/g, ' ').trim()
+            return h(
+              'button',
+              {
+                key: note.id,
+                type: 'button',
+                className: 'dsn-card',
+                'data-color': colorOf(note),
+                style: { '--tilt': `${tiltOf(note)}deg`, '--delay': `${Math.min(index, 12) * 46}ms` },
+                onClick: () => store.openNote(note.id),
+              },
+              h('span', { className: 'dsn-card-tape', 'aria-hidden': true }),
+              h(
+                'span',
+                { className: 'dsn-card-inner' },
+                h('span', { className: 'dsn-card-title' }, note.title === '' ? t('untitled') : note.title),
                 h(
                   'span',
-                  { className: 'dsn-card-inner' },
-                  h('span', { className: 'dsn-card-title' }, note.title === '' ? t('untitled') : note.title),
-                  h(
-                    'span',
-                    { className: 'dsn-card-body', 'data-empty': preview === '' ? 'true' : 'false' },
-                    preview === '' ? t('emptyBody') : preview,
-                  ),
-                  h(
-                    'span',
-                    { className: 'dsn-card-foot' },
-                    `${note.updatedBy || '—'} · ${timeLabel(note.updatedAt)}`,
-                    note.kind === 'memory' || note.aiMode === 'all' || note.aiMode === 'workspace'
+                  { className: 'dsn-card-body', 'data-empty': preview === '' ? 'true' : 'false' },
+                  preview === '' ? t('emptyBody') : preview,
+                ),
+                h(
+                  'span',
+                  { className: 'dsn-card-foot' },
+                  `${note.updatedBy || '—'} · ${timeLabel(note.updatedAt)}`,
+                  note.kind === 'memory' || note.aiMode === 'all' || note.aiMode === 'workspace'
                     ? h(
                       'span',
                       {
@@ -1008,18 +1197,207 @@ ${PALETTE_CSS}
                       note.kind === 'memory' ? '★' : 'AI',
                     )
                     : null,
-                  ),
                 ),
-              )
-            }),
+              ),
+            )
+          }),
+        ),
+      )
+    }
+
+    function dueChip(item, now) {
+      if (!item.dueAt) return null
+      const today = startOfDay(now)
+      const due = startOfDay(item.dueAt)
+      if (item.status !== 'done' && due < today) return h('span', { className: 'dsn-chip', 'data-tone': 'overdue' }, `${t('overdue')} · ${shortDate(item.dueAt)}`)
+      if (due === today) return h('span', { className: 'dsn-chip', 'data-tone': 'today' }, t('dueToday'))
+      return h('span', { className: 'dsn-chip' }, shortDate(item.dueAt))
+    }
+
+    function TaskBoard({ state }) {
+      const tasks = byKind(state, 'task')
+      if (tasks.length === 0) {
+        return h(
+          'div',
+          { className: 'dsn-empty' },
+          h(EmptyArt),
+          h('div', { className: 'dsn-empty-title' }, t('emptyTasks')),
+          h('div', { className: 'dsn-empty-hint' }, t('emptyTasksHint')),
+        )
+      }
+      const now = Date.now()
+      const labels = { todo: t('statusTodo'), doing: t('statusDoing'), done: t('statusDone') }
+      return h(
+        'div',
+        { className: 'dsn-scroll' },
+        h(
+          'div',
+          { className: 'dsn-board' },
+          STATUSES.map((status) => {
+            const column = tasks.filter((task) => (task.status ?? 'todo') === status)
+            return h(
+              'section',
+              { key: status, className: 'dsn-col' },
+              h(
+                'header',
+                { className: 'dsn-col-head' },
+                h('span', null, labels[status]),
+                h('span', { className: 'dsn-col-count' }, String(column.length)),
+              ),
+              column.map((task) => h(
+                'button',
+                {
+                  key: task.id,
+                  type: 'button',
+                  className: 'dsn-task',
+                  'data-color': colorOf(task),
+                  'data-priority': task.priority ?? 'normal',
+                  'data-done': status === 'done' ? 'true' : 'false',
+                  onClick: () => store.openNote(task.id),
+                },
+                h('span', { className: 'dsn-task-title' }, task.title === '' ? t('untitled') : task.title),
+                h(
+                  'span',
+                  { className: 'dsn-task-meta' },
+                  task.priority === 'high' ? h('span', { className: 'dsn-chip', 'data-tone': 'overdue' }, t('priorityHigh')) : null,
+                  dueChip(task, now),
+                  task.estimateMin > 0 ? h('span', { className: 'dsn-chip' }, t('minutes', { n: task.estimateMin })) : null,
+                ),
+              )),
+            )
+          }),
+        ),
+      )
+    }
+
+    function LinkList({ state }) {
+      const links = byKind(state, 'link')
+      if (links.length === 0) {
+        return h(
+          'div',
+          { className: 'dsn-empty' },
+          h(EmptyArt),
+          h('div', { className: 'dsn-empty-title' }, t('emptyLinks')),
+          h('div', { className: 'dsn-empty-hint' }, t('emptyLinksHint')),
+        )
+      }
+      const sorted = [...links].sort((left, right) => Number(left.read === true) - Number(right.read === true) || right.updatedAt - left.updatedAt)
+      return h(
+        'div',
+        { className: 'dsn-scroll' },
+        h(
+          'div',
+          { className: 'dsn-links' },
+          sorted.map((link) => h(
+            'button',
+            {
+              key: link.id,
+              type: 'button',
+              className: 'dsn-link',
+              'data-read': link.read === true ? 'true' : 'false',
+              onClick: () => store.openNote(link.id),
+            },
+            h('span', { className: 'dsn-link-title' }, link.title === '' ? link.url || t('untitled') : link.title),
+            link.url === '' ? null : h('span', { className: 'dsn-link-url' }, link.url),
+            h(
+              'span',
+              { className: 'dsn-link-foot' },
+              h('span', { className: 'dsn-chip' }, link.read === true ? t('read') : t('unread')),
+              h('span', null, `${link.updatedBy || '—'} · ${timeLabel(link.updatedAt)}`),
+            ),
+          )),
+        ),
+      )
+    }
+
+    function TodayView({ state }) {
+      const [now, setNow] = React.useState(() => Date.now())
+
+      React.useEffect(() => {
+        const id = window.setInterval(() => setNow(Date.now()), 1000)
+        return () => window.clearInterval(id)
+      }, [])
+
+      const date = new Date(now)
+      const weekdays = DICT[currentLang()]?.weekdays ?? DICT.en.weekdays
+      const dateLine = `${date.getFullYear()}/${pad2(date.getMonth() + 1)}/${pad2(date.getDate())} · ${weekdays[date.getDay()]}`
+      const timeLine = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+      const today = startOfDay(now)
+
+      const tasks = byKind(state, 'task')
+      const dueToday = tasks.filter((task) => task.dueAt > 0 && startOfDay(task.dueAt) === today && task.status !== 'done')
+      const overdue = tasks.filter((task) => task.dueAt > 0 && startOfDay(task.dueAt) < today && task.status !== 'done')
+      const changed = state.notes.filter((item) => item.updatedAt >= today)
+
+      function row(item, key) {
+        return h(
+          'button',
+          {
+            key,
+            type: 'button',
+            className: 'dsn-task',
+            'data-color': colorOf(item),
+            'data-priority': item.priority ?? 'normal',
+            'data-done': item.status === 'done' ? 'true' : 'false',
+            onClick: () => store.openNote(item.id),
+          },
+          h('span', { className: 'dsn-task-title' }, item.title === '' ? t('untitled') : item.title),
+          h(
+            'span',
+            { className: 'dsn-task-meta' },
+            item.kind === 'task' ? h('span', { className: 'dsn-chip' }, t(item.status === 'doing' ? 'statusDoing' : item.status === 'done' ? 'statusDone' : 'statusTodo')) : null,
+            item.estimateMin > 0 ? h('span', { className: 'dsn-chip' }, t('minutes', { n: item.estimateMin })) : null,
+            h('span', { className: 'dsn-chip' }, timeLabel(item.updatedAt)),
           ),
+        )
+      }
+
+      return h(
+        'div',
+        { className: 'dsn-scroll' },
+        h(
+          'div',
+          { className: 'dsn-today' },
+          h(
+            'div',
+            { className: 'dsn-clock' },
+            h('div', { className: 'dsn-clock-date' }, dateLine),
+            h('div', { className: 'dsn-clock-time' }, timeLine),
+          ),
+          h(
+            'section',
+            { className: 'dsn-section' },
+            h('div', { className: 'dsn-section-head' }, `${t('todayDue')} · ${dueToday.length}`),
+            dueToday.length === 0
+              ? h('div', { className: 'dsn-none' }, t('nothing'))
+              : dueToday.map((item) => row(item, item.id)),
+          ),
+          h(
+            'section',
+            { className: 'dsn-section' },
+            h('div', { className: 'dsn-section-head' }, `${t('todayOverdue')} · ${overdue.length}`),
+            overdue.length === 0
+              ? h('div', { className: 'dsn-none' }, t('nothing'))
+              : overdue.map((item) => row(item, item.id)),
+          ),
+          h(
+            'section',
+            { className: 'dsn-section' },
+            h('div', { className: 'dsn-section-head' }, `${t('todayChanged')} · ${changed.length}`),
+            changed.length === 0
+              ? h('div', { className: 'dsn-none' }, t('nothing'))
+              : changed.slice(0, 12).map((item) => row(item, item.id)),
+          ),
+        ),
       )
     }
 
     function Editor({ state }) {
       const [confirming, setConfirming] = React.useState(false)
-      const activeNote = state.notes.find((note) => note.id === state.activeId) ?? null
+      const activeItem = state.notes.find((note) => note.id === state.activeId) ?? null
       const names = PAPERS.map((paper) => (currentLang() === 'zh' ? paper.zh : paper.en))
+      const isTask = state.kind === 'task'
+      const isLink = state.kind === 'link'
 
       React.useEffect(() => {
         setConfirming(false)
@@ -1045,54 +1423,52 @@ ${PALETTE_CSS}
               onClick: () => store.setColor(index),
             })),
           ),
-          h(
-            'div',
-            { className: 'dsn-edit-controls' },
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dsn-kind',
-                'data-memory': state.kind === 'memory' ? 'true' : 'false',
-                'aria-pressed': state.kind === 'memory' ? 'true' : 'false',
-                title: t('kindHint'),
-                onClick: () => store.setKind(state.kind === 'memory' ? 'note' : 'memory'),
-              },
-              '★',
-              t(state.kind === 'memory' ? 'kindMemory' : 'kindNote'),
-            ),
-            h(
-              'select',
-              {
-                className: 'dsn-scope',
-                value: state.kind === 'memory' ? 'all' : state.aiMode,
-                'aria-label': t('scopeLabel'),
-                title: t('scopeHint'),
-                disabled: state.kind === 'memory',
-                onChange: (event) => store.setAiMode(event.target.value),
-              },
-              h('option', { value: 'off' }, t('scopeOff')),
-              h('option', { value: 'all' }, t('scopeAll')),
-              h('option', { value: 'workspace' }, t('scopeWorkspace')),
-            ),
-            state.aiMode === 'workspace' && state.kind !== 'memory'
-              ? h(
+          isTask || isLink
+            ? null
+            : h(
+              'div',
+              { className: 'dsn-edit-controls' },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsn-kind',
+                  'data-memory': state.kind === 'memory' ? 'true' : 'false',
+                  'aria-pressed': state.kind === 'memory' ? 'true' : 'false',
+                  title: t('kindHint'),
+                  onClick: () => store.setKind(state.kind === 'memory' ? 'note' : 'memory'),
+                },
+                '★',
+                t(state.kind === 'memory' ? 'kindMemory' : 'kindNote'),
+              ),
+              h(
                 'select',
                 {
-                  className: 'dsn-scope',
-                  value: state.aiWorkspaceId,
-                  'aria-label': t('scopeWorkspace'),
-                  onChange: (event) => store.setAiMode('workspace', event.target.value),
+                  className: 'dsn-select',
+                  value: state.kind === 'memory' ? 'all' : state.aiMode,
+                  'aria-label': t('scopeLabel'),
+                  title: t('scopeHint'),
+                  disabled: state.kind === 'memory',
+                  onChange: (event) => store.setAiMode(event.target.value),
                 },
-                h('option', { value: '' }, t('scopePick')),
-                state.workspaces.map((workspace) => h(
-                  'option',
-                  { key: workspace.id, value: workspace.id },
-                  workspace.title,
-                )),
-              )
-              : null,
-          ),
+                h('option', { value: 'off' }, t('scopeOff')),
+                h('option', { value: 'all' }, t('scopeAll')),
+                h('option', { value: 'workspace' }, t('scopeWorkspace')),
+              ),
+              state.aiMode === 'workspace' && state.kind !== 'memory'
+                ? h(
+                  'select',
+                  {
+                    className: 'dsn-select',
+                    value: state.aiWorkspaceId,
+                    'aria-label': t('scopeWorkspace'),
+                    onChange: (event) => store.setAiMode('workspace', event.target.value),
+                  },
+                  h('option', { value: '' }, t('scopePick')),
+                  state.workspaces.map((workspace) => h('option', { key: workspace.id, value: workspace.id }, workspace.title)),
+                )
+                : null,
+            ),
         ),
         state.deletedNotice
           ? h(Banner, {
@@ -1114,6 +1490,66 @@ ${PALETTE_CSS}
             ],
           })
           : null,
+        isTask
+          ? h(
+            'div',
+            { className: 'dsn-fields' },
+            h(
+              'label',
+              { className: 'dsn-field' },
+              h('span', { className: 'dsn-field-label' }, t('statusLabel')),
+              h(
+                'select',
+                { className: 'dsn-input', value: state.status, onChange: (event) => store.setStatus(event.target.value) },
+                STATUSES.map((value) => h('option', { key: value, value }, t(value === 'todo' ? 'statusTodo' : value === 'doing' ? 'statusDoing' : 'statusDone'))),
+              ),
+            ),
+            h(
+              'label',
+              { className: 'dsn-field' },
+              h('span', { className: 'dsn-field-label' }, t('priorityLabel')),
+              h(
+                'select',
+                { className: 'dsn-input', value: state.priority, onChange: (event) => store.setPriority(event.target.value) },
+                PRIORITIES.map((value) => h('option', { key: value, value }, t(value === 'low' ? 'priorityLow' : value === 'high' ? 'priorityHigh' : 'priorityNormal'))),
+              ),
+            ),
+            h(
+              'label',
+              { className: 'dsn-field' },
+              h('span', { className: 'dsn-field-label' }, t('dueLabel')),
+              h('input', {
+                className: 'dsn-input',
+                type: 'date',
+                value: dateInputValue(state.dueAt),
+                onChange: (event) => store.setDueAt(event.target.value),
+              }),
+            ),
+            h(
+              'label',
+              { className: 'dsn-field' },
+              h('span', { className: 'dsn-field-label' }, t('estimateLabel')),
+              h('input', {
+                className: 'dsn-input dsn-input-num',
+                type: 'number',
+                min: '0',
+                step: '5',
+                value: state.estimateMin === 0 ? '' : String(state.estimateMin),
+                onChange: (event) => store.setEstimateMin(event.target.value),
+              }),
+            ),
+          )
+          : null,
+        isLink
+          ? h('input', {
+            className: 'dsn-url-input',
+            type: 'url',
+            value: state.url,
+            placeholder: t('urlPlaceholder'),
+            'aria-label': t('urlLabel'),
+            onChange: (event) => store.editUrl(event.target.value),
+          })
+          : null,
         h('input', {
           className: 'dsn-edit-title',
           value: state.title,
@@ -1131,29 +1567,39 @@ ${PALETTE_CSS}
         h(
           'div',
           { className: 'dsn-edit-foot' },
-          h('span', null, activeNote === null ? '' : `${activeNote.updatedBy || '—'} · ${timeLabel(activeNote.updatedAt)}`),
+          h('span', null, activeItem === null ? '' : `${activeItem.updatedBy || '—'} · ${timeLabel(activeItem.updatedAt)}`),
           h(
-            'button',
-            {
-              type: 'button',
-              className: confirming ? 'dsn-btn dsn-btn-danger' : 'dsn-btn',
-              onClick: () => {
-                if (confirming) {
-                  void store.remove()
-                  setConfirming(false)
-                } else {
-                  setConfirming(true)
-                }
+            'span',
+            { style: { display: 'inline-flex', gap: '8px' } },
+            isLink
+              ? h('button', {
+                type: 'button',
+                className: state.read ? 'dsn-btn dsn-btn-primary' : 'dsn-btn',
+                onClick: () => store.setRead(!state.read),
+              }, state.read ? t('read') : t('unread'))
+              : null,
+            h(
+              'button',
+              {
+                type: 'button',
+                className: confirming ? 'dsn-btn dsn-btn-danger' : 'dsn-btn',
+                onClick: () => {
+                  if (confirming) {
+                    void store.remove()
+                    setConfirming(false)
+                  } else {
+                    setConfirming(true)
+                  }
+                },
+                onBlur: () => setConfirming(false),
               },
-              onBlur: () => setConfirming(false),
-            },
-            confirming ? t('confirmDelete') : t('delete'),
+              confirming ? t('confirmDelete') : t('delete'),
+            ),
           ),
         ),
       )
     }
 
-    /** The main-column page the sidebar row selects. */
     function BoardPage() {
       const state = useSnapshot()
       const [inviteOpen, setInviteOpen] = React.useState(false)
@@ -1165,6 +1611,15 @@ ${PALETTE_CSS}
 
       const status = effectiveStatus(state)
       const editing = state.view === 'edit'
+      const addLabel = state.tab === 'tasks' ? t('addTask') : state.tab === 'links' ? t('addLink') : t('addNote')
+      const editLabel = state.tab === 'tasks' ? t('editTask') : state.tab === 'links' ? t('editLink') : t('editNote')
+      const tabCount = state.tab === 'tasks'
+        ? byKind(state, 'task').length
+        : state.tab === 'links'
+          ? byKind(state, 'link').length
+          : state.tab === 'today'
+            ? state.notes.filter((item) => item.updatedAt >= startOfDay(Date.now())).length
+            : byKind(state, 'note', 'memory').length
 
       return h(
         'div',
@@ -1185,18 +1640,14 @@ ${PALETTE_CSS}
           h(
             'div',
             { className: 'dsn-head-main' },
-            h('h2', { className: 'dsn-heading' }, editing ? t('editTitle') : t('title')),
+            h('h2', { className: 'dsn-heading' }, editing ? editLabel : t('title')),
             editing ? null : h(Presence, { peers: state.peers }),
           ),
           h(
             'div',
             { className: 'dsn-head-actions' },
             editing
-              ? h('button', {
-                type: 'button',
-                className: 'dsn-btn dsn-btn-primary',
-                onClick: () => { void store.done() },
-              }, t('done'))
+              ? h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => { void store.done() } }, t('done'))
               : [
                 h('button', {
                   key: 'invite',
@@ -1207,8 +1658,29 @@ ${PALETTE_CSS}
               ],
           ),
         ),
+        editing ? null : h(Tabs, { state }),
         !editing && inviteOpen ? h(InviteBar) : null,
-        editing ? h(Editor, { state }) : h(Wall, { state }),
+        editing
+          ? h(Editor, { state })
+          : h(
+            'div',
+            { className: 'dsn-screen' },
+            h(
+              'div',
+              { className: 'dsn-toolbar' },
+              h('span', { className: 'dsn-count' }, t('items', { n: tabCount })),
+              state.tab === 'today'
+                ? null
+                : h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => store.create() }, addLabel),
+            ),
+            state.tab === 'tasks'
+              ? h(TaskBoard, { state })
+              : state.tab === 'links'
+                ? h(LinkList, { state })
+                : state.tab === 'today'
+                  ? h(TodayView, { state })
+                  : h(NotesWall, { state }),
+          ),
         h(
           'footer',
           { className: 'dsn-page-foot' },
@@ -1246,7 +1718,6 @@ ${PALETTE_CSS}
         localeService = ctx.locale
         store.init(defaultName())
 
-        // Sidebar row: the shell owns the button and label, this slot owns the icon.
         ctx.effect(
           () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
             name: 'sidebar.panellist',
@@ -1257,7 +1728,6 @@ ${PALETTE_CSS}
           'nexera: sidebar row',
         )
 
-        // The panel the row selects.
         ctx.effect(
           () => ctx.slots.inject('main', () => ctx.slots.register({
             name: 'main',

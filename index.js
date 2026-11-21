@@ -65,11 +65,38 @@ export function apply(ctx, config = {}) {
   }
 
   function normalizeKind(raw) {
-    return raw === 'memory' ? 'memory' : 'note'
+    if (raw === 'memory' || raw === 'task' || raw === 'link') return raw
+    return 'note'
   }
 
   function normalizeMode(raw, fallback) {
     if (raw === 'off' || raw === 'all' || raw === 'workspace') return raw
+    return fallback
+  }
+
+  function normalizeStatus(raw) {
+    if (raw === 'doing' || raw === 'done') return raw
+    return 'todo'
+  }
+
+  function normalizePriority(raw) {
+    if (raw === 'low' || raw === 'high') return raw
+    return 'normal'
+  }
+
+  function normalizeTimestamp(raw) {
+    return Number.isFinite(raw) && raw > 0 ? Math.trunc(raw) : 0
+  }
+
+  /** Accepts an ISO date/datetime string or an epoch millisecond number. */
+  function parseDueAt(raw, fallback) {
+    if (typeof raw === 'string') {
+      if (raw.trim() === '') return 0
+      const parsed = Date.parse(raw)
+      if (Number.isFinite(parsed)) return parsed
+      return fallback
+    }
+    if (Number.isFinite(raw)) return normalizeTimestamp(raw)
     return fallback
   }
 
@@ -88,6 +115,14 @@ export function apply(ctx, config = {}) {
       kind: normalizeKind(raw.kind),
       aiMode: normalizeMode(raw.aiMode, legacyEnabled ? 'all' : 'off'),
       aiWorkspaceId: clip(raw.aiWorkspaceId, MAX_ID_LENGTH),
+      status: normalizeStatus(raw.status),
+      priority: normalizePriority(raw.priority),
+      dueAt: normalizeTimestamp(raw.dueAt),
+      estimateMin: Number.isFinite(raw.estimateMin) && raw.estimateMin > 0
+        ? Math.trunc(raw.estimateMin)
+        : 0,
+      url: clip(raw.url, 2000),
+      read: raw.read === true,
       createdAt: Number.isFinite(raw.createdAt) ? Math.trunc(raw.createdAt) : updatedAt,
       updatedAt,
       updatedBy: clip(raw.updatedBy, 60),
@@ -267,22 +302,22 @@ export function apply(ctx, config = {}) {
       const aiWorkspaceId = typeof incoming.aiWorkspaceId === 'string'
         ? clip(incoming.aiWorkspaceId, MAX_ID_LENGTH)
         : (existing?.aiWorkspaceId ?? '')
+      const status = normalizeStatus(incoming.status ?? existing?.status)
+      const priority = normalizePriority(incoming.priority ?? existing?.priority)
+      const dueAt = incoming.dueAt === undefined
+        ? (existing?.dueAt ?? 0)
+        : normalizeTimestamp(incoming.dueAt)
+      const estimateMin = incoming.estimateMin === undefined
+        ? (existing?.estimateMin ?? 0)
+        : (Number.isFinite(incoming.estimateMin) && incoming.estimateMin > 0
+          ? Math.trunc(incoming.estimateMin)
+          : 0)
+      const url = typeof incoming.url === 'string' ? clip(incoming.url, 2000) : (existing?.url ?? '')
+      const read = typeof incoming.read === 'boolean' ? incoming.read : (existing?.read ?? false)
 
       if (existing !== null && existing.rev !== baseRev) {
         // Someone edited it first: hand the current version back instead of overwriting it.
         return { ...stateFor(client), saved: false, conflict: true, current: { ...existing }, note: null }
-      }
-
-      if (
-        existing !== null
-        && existing.title === title
-        && existing.body === body
-        && existing.color === color
-        && existing.kind === kind
-        && existing.aiMode === aiMode
-        && existing.aiWorkspaceId === aiWorkspaceId
-      ) {
-        return { ...stateFor(client), saved: false, conflict: false, current: null, note: { ...existing } }
       }
 
       const now = Date.now()
@@ -294,10 +329,34 @@ export function apply(ctx, config = {}) {
         kind,
         aiMode,
         aiWorkspaceId,
+        status,
+        priority,
+        dueAt,
+        estimateMin,
+        url,
+        read,
         rev: (existing?.rev ?? 0) + 1,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         updatedBy: name === '' ? '访客' : name,
+      }
+
+      if (existing !== null) {
+        const unchanged = existing.title === next.title
+          && existing.body === next.body
+          && existing.color === next.color
+          && existing.kind === next.kind
+          && existing.aiMode === next.aiMode
+          && existing.aiWorkspaceId === next.aiWorkspaceId
+          && existing.status === next.status
+          && existing.priority === next.priority
+          && existing.dueAt === next.dueAt
+          && existing.estimateMin === next.estimateMin
+          && existing.url === next.url
+          && existing.read === next.read
+        if (unchanged) {
+          return { ...stateFor(client), saved: false, conflict: false, current: null, note: { ...existing } }
+        }
       }
       notes.set(id, next)
       trimToCap()
@@ -453,6 +512,12 @@ export function apply(ctx, config = {}) {
       kind: note.kind,
       aiMode: note.aiMode,
       aiWorkspaceId: note.aiWorkspaceId,
+      status: note.status,
+      priority: note.priority,
+      dueAt: note.dueAt,
+      estimateMin: note.estimateMin,
+      url: note.url,
+      read: note.read,
       updatedAt: note.updatedAt,
       updatedBy: note.updatedBy,
       preview: note.body.replace(/\s+/g, ' ').slice(0, 160),
@@ -464,13 +529,14 @@ export function apply(ctx, config = {}) {
     const action = clip(args?.action, 40)
 
     if (action === 'list') {
-      const all = sortedNotes()
-      const readable = all.filter((note) => note.kind === 'memory' || note.aiMode !== 'off').length
+      const filterKind = typeof args?.kind === 'string' ? normalizeKind(args.kind) : null
+      const pool = sortedNotes().filter((note) => filterKind === null || note.kind === filterKind)
+      const readable = pool.filter((note) => note.kind === 'memory' || note.aiMode !== 'off').length
       return {
-        result: all.length === 0
-          ? 'The board is empty.'
-          : `${all.length} note(s); ${readable} readable by you.`,
-        notes: all.map(summarize),
+        result: pool.length === 0
+          ? 'Nothing on the board.'
+          : `${pool.length} item(s); ${readable} readable by you.`,
+        notes: pool.map(summarize),
       }
     }
 
@@ -491,6 +557,14 @@ export function apply(ctx, config = {}) {
         kind: normalizeKind(args?.kind),
         aiMode: normalizeMode(args?.aiMode, 'all'),
         aiWorkspaceId: clip(args?.aiWorkspaceId, MAX_ID_LENGTH),
+        status: normalizeStatus(args?.status),
+        priority: normalizePriority(args?.priority),
+        dueAt: parseDueAt(args?.dueAt, 0),
+        estimateMin: Number.isFinite(args?.estimateMin) && args.estimateMin > 0
+          ? Math.trunc(args.estimateMin)
+          : 0,
+        url: clip(args?.url, 2000),
+        read: args?.read === true,
         rev: 1,
         createdAt: now,
         updatedAt: now,
@@ -517,6 +591,14 @@ export function apply(ctx, config = {}) {
         aiWorkspaceId: typeof args?.aiWorkspaceId === 'string'
           ? clip(args.aiWorkspaceId, MAX_ID_LENGTH)
           : note.aiWorkspaceId,
+        status: typeof args?.status === 'string' ? normalizeStatus(args.status) : note.status,
+        priority: typeof args?.priority === 'string' ? normalizePriority(args.priority) : note.priority,
+        dueAt: args?.dueAt === undefined ? note.dueAt : parseDueAt(args.dueAt, note.dueAt),
+        estimateMin: typeof args?.estimateMin === 'number'
+          ? (args.estimateMin > 0 ? Math.trunc(args.estimateMin) : 0)
+          : note.estimateMin,
+        url: typeof args?.url === 'string' ? clip(args.url, 2000) : note.url,
+        read: typeof args?.read === 'boolean' ? args.read : note.read,
         rev: note.rev + 1,
         updatedAt: Date.now(),
         updatedBy: AI_AUTHOR,
@@ -525,6 +607,21 @@ export function apply(ctx, config = {}) {
       revision += 1
       await persist()
       return { result: `Updated note ${id}.`, id, notes: [summarize(next)] }
+    }
+
+    if (action === 'set_status') {
+      const id = clip(args?.id, MAX_ID_LENGTH)
+      const note = notes.get(id)
+      if (note === undefined) return { result: 'No item with that id.', notes: [] }
+      const status = normalizeStatus(args?.status)
+      if (note.status === status) {
+        return { result: `Item ${id} is already ${status}.`, id, notes: [summarize(note)] }
+      }
+      const next = { ...note, status, rev: note.rev + 1, updatedAt: Date.now(), updatedBy: AI_AUTHOR }
+      notes.set(id, next)
+      revision += 1
+      await persist()
+      return { result: `Item ${id} is now ${status}.`, id, notes: [summarize(next)] }
     }
 
     if (action === 'set_ai') {
@@ -593,18 +690,21 @@ export function apply(ctx, config = {}) {
     const disposeTool = scope.tools.register({
       name: 'sticky_notes',
       description: [
-        'Read and write the shared sticky-note board the user sees in the DSH sidebar.',
-        'Each note has an AI scope: `off` (yours alone), `all` (every conversation), or `workspace` (only one workspace).',
-        'Notes marked `kind: "memory"` are permanent facts about the user — their personality and what they love doing — and are read in every conversation.',
-        'Actions: `list` every note, `read` one note, `create` a note, `update` a note, `set_ai` to change a note\'s scope.',
-        'When the user asks you to remember something about themselves, create a note with kind "memory".',
+        'Read and write the Nexera workbench the user sees in the DSH sidebar: sticky notes, memory facts, tasks, and a reading list.',
+        'Every item has a kind: "note", "memory", "task", or "link".',
+        'Note items have an AI scope: `off` (yours alone), `all` (every conversation), or `workspace` (only one workspace).',
+        'Items marked kind "memory" are permanent facts about the user — their personality and what they love doing — and are read in every conversation.',
+        'Task items carry a status (todo/doing/done), a priority, an optional due date, and an optional estimate in minutes.',
+        'Actions: `list` (optionally filtered by kind), `read`, `create`, `update`, `set_status`, `set_ai`.',
+        'When the user asks you to remember something about themselves, create a kind "memory" item.',
+        'When they mention something to do later, create a "task"; when they share something to read later, create a "link".',
       ].join(' '),
       parameters: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['list', 'read', 'create', 'update', 'set_ai'],
+            enum: ['list', 'read', 'create', 'update', 'set_status', 'set_ai'],
             description: 'What to do with the board.',
           },
           id: {
@@ -630,8 +730,34 @@ export function apply(ctx, config = {}) {
           },
           kind: {
             type: 'string',
-            enum: ['note', 'memory'],
-            description: 'Memory notes hold permanent facts about the user and are read in every conversation.',
+            enum: ['note', 'memory', 'task', 'link'],
+            description: 'note = a sticky note; memory = a permanent fact about the user; task = a tracked to-do; link = a reading-list entry.',
+          },
+          status: {
+            type: 'string',
+            enum: ['todo', 'doing', 'done'],
+            description: 'Task status.',
+          },
+          priority: {
+            type: 'string',
+            enum: ['low', 'normal', 'high'],
+            description: 'Task priority.',
+          },
+          dueAt: {
+            type: 'string',
+            description: 'Task due date as an ISO date ("2026-11-25") or datetime ("2026-11-25T18:00:00+08:00"). Empty string clears it.',
+          },
+          estimateMin: {
+            type: 'integer',
+            description: 'Estimated effort in minutes. 0 clears it.',
+          },
+          url: {
+            type: 'string',
+            description: 'Link URL, for kind "link".',
+          },
+          read: {
+            type: 'boolean',
+            description: 'Whether a reading-list entry is already read.',
           },
           color: {
             type: 'integer',
@@ -658,6 +784,12 @@ export function apply(ctx, config = {}) {
                   kind: { type: 'string' },
                   aiMode: { type: 'string' },
                   aiWorkspaceId: { type: 'string' },
+                  status: { type: 'string' },
+                  priority: { type: 'string' },
+                  dueAt: { type: 'integer' },
+                  estimateMin: { type: 'integer' },
+                  url: { type: 'string' },
+                  read: { type: 'boolean' },
                   updatedAt: { type: 'integer' },
                   updatedBy: { type: 'string' },
                   preview: { type: 'string' },
@@ -670,15 +802,28 @@ export function apply(ctx, config = {}) {
           const lines = [String(value?.result ?? 'Done.')]
           const list = Array.isArray(value?.notes) ? value.notes : []
           for (const note of list) {
-            const scope = note.kind === 'memory'
-              ? ' · memory'
-              : note.aiMode === 'all'
-                ? ' · all chats'
-                : note.aiMode === 'workspace'
-                  ? ' · one workspace'
-                  : ' · private'
-            lines.push(`- ${note.title === '' ? '(untitled)' : note.title} [${note.id}]${scope}`)
-            if (note.preview) lines.push(`  ${note.preview}`)
+            const title = note.title === '' ? '(untitled)' : note.title
+            let meta = ''
+            if (note.kind === 'task') {
+              const parts = [`task:${note.status}`]
+              if (note.priority === 'high') parts.push('high')
+              if (note.dueAt > 0) parts.push(`due ${new Date(note.dueAt).toISOString().slice(0, 10)}`)
+              if (note.estimateMin > 0) parts.push(`${note.estimateMin}m`)
+              meta = ` · ${parts.join(' · ')}`
+            } else if (note.kind === 'link') {
+              meta = note.read ? ' · link · read' : ' · link · unread'
+            } else if (note.kind === 'memory') {
+              meta = ' · memory'
+            } else if (note.aiMode === 'all') {
+              meta = ' · all chats'
+            } else if (note.aiMode === 'workspace') {
+              meta = ' · one workspace'
+            } else {
+              meta = ' · private'
+            }
+            lines.push(`- ${title} [${note.id}]${meta}`)
+            if (note.kind === 'link' && note.url !== '') lines.push(`  ${note.url}`)
+            else if (note.preview) lines.push(`  ${note.preview}`)
           }
           return [{ type: 'text', text: lines.join('\n') }]
         },
