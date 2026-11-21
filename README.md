@@ -25,6 +25,28 @@ opens the same DSH page.
 - **Delete protection** — a note deleted by someone else never eats your draft; it can
   be re-homed as a new note.
 
+## AI can read your notes (per-note switch)
+
+Every note carries an **AI can read** switch in its editor.
+
+- **On** — the note joins the assistant's runtime context on every following turn,
+  and the sidebar board marks the card with a small `AI` tag. Useful for standing
+  facts you do not want to repeat: project conventions, names, decisions.
+- **Off** — the note is yours alone; the model never sees its text.
+
+The board is also a tool the agent can call:
+
+| Tool | Actions |
+|---|---|
+| `sticky_notes` | `list` · `read` · `create` · `update` · `set_ai` |
+
+So "remember that the build runs on port 8080" makes the assistant write a note with
+the switch already on, and that note comes back in later turns on its own. The
+assistant can also flip the switch on an existing note, or read one you point it at.
+
+New notes created by the assistant default to readable; new notes created by you
+default to readable too, and one click turns it off.
+
 ## Install
 
 Nexera is a DSH bundle. Point the plugin manager at this directory:

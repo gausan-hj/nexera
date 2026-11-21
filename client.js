@@ -71,6 +71,9 @@ window.__ModuleLoader__.load({
         deletedDiscard: '放弃内容',
         nameLabel: '我的名字',
         colorLabel: '颜色',
+        aiOn: 'AI 可以读',
+        aiOff: 'AI 不读取',
+        aiHint: '开启后，AI 在之后的对话里会看到这张便利贴；关闭则只有你能看到。',
         justNow: '刚刚',
         minutesAgo: '{n} 分钟前',
         hoursAgo: '{n} 小时前',
@@ -117,6 +120,9 @@ window.__ModuleLoader__.load({
         deletedDiscard: 'Discard',
         nameLabel: 'My name',
         colorLabel: 'Colour',
+        aiOn: 'AI can read',
+        aiOff: "AI can't read",
+        aiHint: 'When on, the assistant sees this note in later turns. When off, only you can see it.',
         justNow: 'just now',
         minutesAgo: '{n} min ago',
         hoursAgo: '{n} h ago',
@@ -218,6 +224,7 @@ window.__ModuleLoader__.load({
         title: '',
         body: '',
         color: 0,
+        aiEnabled: false,
         baseRev: 0,
         dirty: false,
         status: 'idle',
@@ -266,6 +273,7 @@ window.__ModuleLoader__.load({
           title: '',
           body: '',
           color: 0,
+          aiEnabled: false,
           baseRev: 0,
           dirty: false,
           conflict: null,
@@ -304,6 +312,7 @@ window.__ModuleLoader__.load({
             next.title = active.title
             next.body = active.body
             next.color = colorOf(active)
+            next.aiEnabled = active.aiEnabled === true
             next.baseRev = active.rev
           }
         }
@@ -345,7 +354,7 @@ window.__ModuleLoader__.load({
         if (isBlankDraft()) return true
 
         const target = state.activeId
-        const sent = { title: state.title, body: state.body, color: state.color, baseRev: state.baseRev }
+        const sent = { title: state.title, body: state.body, color: state.color, aiEnabled: state.aiEnabled, baseRev: state.baseRev }
         patch({ status: 'saving' })
 
         try {
@@ -357,7 +366,7 @@ window.__ModuleLoader__.load({
               name: state.me,
               op: {
                 type: 'save',
-                note: { id: target, title: sent.title, body: sent.body, color: sent.color, baseRev: sent.baseRev },
+                note: { id: target, title: sent.title, body: sent.body, color: sent.color, aiEnabled: sent.aiEnabled, baseRev: sent.baseRev },
               },
             }),
           })
@@ -392,7 +401,10 @@ window.__ModuleLoader__.load({
             return true
           }
 
-          const stillSame = state.title === sent.title && state.body === sent.body && state.color === sent.color
+          const stillSame = state.title === sent.title
+            && state.body === sent.body
+            && state.color === sent.color
+            && state.aiEnabled === sent.aiEnabled
           patch({
             ...shared,
             status: stillSame ? 'saved' : 'unsaved',
@@ -467,6 +479,7 @@ window.__ModuleLoader__.load({
             title: note.title,
             body: note.body,
             color: colorOf(note),
+            aiEnabled: note.aiEnabled === true,
             baseRev: note.rev,
             dirty: false,
             conflict: null,
@@ -481,6 +494,7 @@ window.__ModuleLoader__.load({
             title: '',
             body: '',
             color: colorOf({ id }),
+            aiEnabled: true,
             baseRev: 0,
             dirty: false,
             conflict: null,
@@ -498,6 +512,10 @@ window.__ModuleLoader__.load({
         setColor(color) {
           if (color === state.color) return
           patch({ color, dirty: true, status: 'unsaved' })
+          scheduleSave()
+        },
+        toggleAi() {
+          patch({ aiEnabled: !state.aiEnabled, dirty: true, status: 'unsaved' })
           scheduleSave()
         },
         /** Finish the editor: persist, then come back to the wall. */
@@ -520,6 +538,7 @@ window.__ModuleLoader__.load({
               title: pending.current.title,
               body: pending.current.body,
               color: colorOf(pending.current),
+              aiEnabled: pending.current.aiEnabled === true,
               baseRev: pending.current.rev,
               dirty: false,
               conflict: null,
@@ -531,7 +550,7 @@ window.__ModuleLoader__.load({
           }
         },
         reviveDraft() {
-          patch({ activeId: newNoteId(), baseRev: 0, dirty: true, deletedNotice: false, status: 'unsaved' })
+          patch({ activeId: newNoteId(), aiEnabled: true, baseRev: 0, dirty: true, deletedNotice: false, status: 'unsaved' })
           scheduleSave()
         },
         dropDraft() {
@@ -670,9 +689,17 @@ ${PALETTE_CSS}
 .dsn-card-body{margin-top:7px;flex:1;min-height:0;font-size:12px;line-height:1.6;opacity:.74;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .dsn-card-body[data-empty="true"]{opacity:.42;font-style:italic}
 .dsn-card-foot{display:block;margin-top:8px;font-size:10.5px;font-weight:600;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsn-card-ai{margin-left:6px;padding:0 4px;border:1px solid currentColor;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.04em;vertical-align:1px;opacity:.85}
 
 .dsn-edit{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 26px 18px;gap:12px;background:linear-gradient(180deg,var(--paper-tint,rgba(255,214,102,.18)),rgba(0,0,0,0) 170px)}
+.dsn-edit-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
 .dsn-edit-swatches{display:flex;align-items:center;gap:9px;flex:none}
+.dsn-ai{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1.5px solid var(--dsn-line);background:transparent;color:var(--dsn-ink2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.dsn-ai:hover{border-color:var(--dsn-ink3)}
+.dsn-ai:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:2px}
+.dsn-ai-dot{width:7px;height:7px;border-radius:50%;background:var(--dsn-ink3);transition:background .15s ease,box-shadow .15s ease}
+.dsn-ai[data-on="true"]{background:rgba(63,196,124,.16);border-color:rgba(63,196,124,.5);color:var(--dsn-ink)}
+.dsn-ai[data-on="true"] .dsn-ai-dot{background:#3FC47C;box-shadow:0 0 0 3px rgba(63,196,124,.22)}
 .dsn-swatch{width:24px;height:24px;padding:0;border:2.5px solid #fff;border-radius:50%;cursor:pointer;background:var(--paper-bg,#FFF3C4);box-shadow:0 3px 9px rgba(0,0,0,.18);transition:transform .2s var(--dsn-bounce),box-shadow .18s ease}
 .dsn-swatch:hover{transform:scale(1.16)}
 .dsn-swatch:focus-visible{outline:3px solid rgba(255,214,102,.95);outline-offset:2px}
@@ -894,7 +921,14 @@ ${PALETTE_CSS}
                     { className: 'dsn-card-body', 'data-empty': preview === '' ? 'true' : 'false' },
                     preview === '' ? t('emptyBody') : preview,
                   ),
-                  h('span', { className: 'dsn-card-foot' }, `${note.updatedBy || '—'} · ${timeLabel(note.updatedAt)}`),
+                  h(
+                    'span',
+                    { className: 'dsn-card-foot' },
+                    `${note.updatedBy || '—'} · ${timeLabel(note.updatedAt)}`,
+                    note.aiEnabled === true
+                      ? h('span', { className: 'dsn-card-ai', title: t('aiHint') }, 'AI')
+                      : null,
+                  ),
                 ),
               )
             }),
@@ -916,17 +950,34 @@ ${PALETTE_CSS}
         { className: 'dsn-screen dsn-edit', 'data-color': state.color },
         h(
           'div',
-          { className: 'dsn-edit-swatches', role: 'group', 'aria-label': t('colorLabel') },
-          PAPERS.map((paper, index) => h('button', {
-            key: index,
-            type: 'button',
-            className: 'dsn-swatch',
-            'data-color': index,
-            title: names[index] ?? String(index + 1),
-            'aria-label': names[index] ?? `${t('colorLabel')} ${index + 1}`,
-            'aria-pressed': state.color === index ? 'true' : 'false',
-            onClick: () => store.setColor(index),
-          })),
+          { className: 'dsn-edit-bar' },
+          h(
+            'div',
+            { className: 'dsn-edit-swatches', role: 'group', 'aria-label': t('colorLabel') },
+            PAPERS.map((paper, index) => h('button', {
+              key: index,
+              type: 'button',
+              className: 'dsn-swatch',
+              'data-color': index,
+              title: names[index] ?? String(index + 1),
+              'aria-label': names[index] ?? `${t('colorLabel')} ${index + 1}`,
+              'aria-pressed': state.color === index ? 'true' : 'false',
+              onClick: () => store.setColor(index),
+            })),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsn-ai',
+              'data-on': state.aiEnabled ? 'true' : 'false',
+              'aria-pressed': state.aiEnabled ? 'true' : 'false',
+              title: t('aiHint'),
+              onClick: () => store.toggleAi(),
+            },
+            h('span', { className: 'dsn-ai-dot' }),
+            t(state.aiEnabled ? 'aiOn' : 'aiOff'),
+          ),
         ),
         state.deletedNotice
           ? h(Banner, {
