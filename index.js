@@ -42,7 +42,7 @@ export function apply(ctx, config = {}) {
     ? config.file
     : join(home, 'sticky-notes', 'notes.json')
 
-  /** @type {Map<string, {id: string, title: string, body: string, rev: number, color: number, aiEnabled: boolean, createdAt: number, updatedAt: number, updatedBy: string}>} */
+  /** @type {Map<string, {id: string, title: string, body: string, rev: number, color: number, kind: 'note'|'memory', aiMode: 'off'|'all'|'workspace', aiWorkspaceId: string, createdAt: number, updatedAt: number, updatedBy: string}>} */
   const notes = new Map()
   /** Deleted ids, so a late autosave from another page cannot bring a note back. */
   const tombstones = new Map()
@@ -64,18 +64,30 @@ export function apply(ctx, config = {}) {
     return fallback
   }
 
+  function normalizeKind(raw) {
+    return raw === 'memory' ? 'memory' : 'note'
+  }
+
+  function normalizeMode(raw, fallback) {
+    if (raw === 'off' || raw === 'all' || raw === 'workspace') return raw
+    return fallback
+  }
+
   function normalizeNote(raw) {
     if (raw === null || typeof raw !== 'object') return null
     const id = clip(raw.id, MAX_ID_LENGTH)
     if (id === '') return null
     const updatedAt = Number.isFinite(raw.updatedAt) ? Math.trunc(raw.updatedAt) : Date.now()
+    const legacyEnabled = raw.aiEnabled === true
     return {
       id,
       title: clip(raw.title, MAX_TITLE_LENGTH),
       body: clip(raw.body, MAX_BODY_LENGTH),
       rev: Number.isFinite(raw.rev) ? Math.max(1, Math.trunc(raw.rev)) : 1,
       color: normalizeColor(raw.color, 0),
-      aiEnabled: raw.aiEnabled === true,
+      kind: normalizeKind(raw.kind),
+      aiMode: normalizeMode(raw.aiMode, legacyEnabled ? 'all' : 'off'),
+      aiWorkspaceId: clip(raw.aiWorkspaceId, MAX_ID_LENGTH),
       createdAt: Number.isFinite(raw.createdAt) ? Math.trunc(raw.createdAt) : updatedAt,
       updatedAt,
       updatedBy: clip(raw.updatedBy, 60),
@@ -164,6 +176,7 @@ export function apply(ctx, config = {}) {
       rev: revision,
       notes: sortedNotes().map((note) => ({ ...note })),
       peers: onlinePeers(client),
+      workspaces: workspaceList(),
       now: Date.now(),
     }
   }
@@ -243,9 +256,17 @@ export function apply(ctx, config = {}) {
       const title = clip(incoming.title, MAX_TITLE_LENGTH)
       const body = clip(incoming.body, MAX_BODY_LENGTH)
       const color = normalizeColor(incoming.color, existing?.color ?? 0)
-      const aiEnabled = typeof incoming.aiEnabled === 'boolean'
-        ? incoming.aiEnabled
-        : (existing?.aiEnabled ?? false)
+      const kind = normalizeKind(incoming.kind ?? existing?.kind)
+      const legacyEnabled = typeof incoming.aiEnabled === 'boolean' ? incoming.aiEnabled : null
+      const aiMode = normalizeMode(
+        incoming.aiMode,
+        legacyEnabled === null
+          ? (existing?.aiMode ?? 'off')
+          : (legacyEnabled ? 'all' : 'off'),
+      )
+      const aiWorkspaceId = typeof incoming.aiWorkspaceId === 'string'
+        ? clip(incoming.aiWorkspaceId, MAX_ID_LENGTH)
+        : (existing?.aiWorkspaceId ?? '')
 
       if (existing !== null && existing.rev !== baseRev) {
         // Someone edited it first: hand the current version back instead of overwriting it.
@@ -257,7 +278,9 @@ export function apply(ctx, config = {}) {
         && existing.title === title
         && existing.body === body
         && existing.color === color
-        && existing.aiEnabled === aiEnabled
+        && existing.kind === kind
+        && existing.aiMode === aiMode
+        && existing.aiWorkspaceId === aiWorkspaceId
       ) {
         return { ...stateFor(client), saved: false, conflict: false, current: null, note: { ...existing } }
       }
@@ -268,7 +291,9 @@ export function apply(ctx, config = {}) {
         title,
         body,
         color,
-        aiEnabled,
+        kind,
+        aiMode,
+        aiWorkspaceId,
         rev: (existing?.rev ?? 0) + 1,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -338,31 +363,86 @@ export function apply(ctx, config = {}) {
 
   // ----------------------------------------------------------- agent side
 
-  /** Notes the user marked as readable by the model, newest first. */
-  function sharedNotes() {
-    return sortedNotes().filter((note) => note.aiEnabled)
+  /** Workspace list for the scope picker in the board. */
+  function workspaceList() {
+    const registry = ctx.get('workspaceRegistry')
+    if (!registry) return []
+    try {
+      return registry.list().map((workspace) => ({ id: workspace.id, title: workspace.title }))
+    } catch {
+      return []
+    }
   }
 
-  function buildContextText() {
-    const shared = sharedNotes()
-    if (shared.length === 0) return ''
-    const lines = [
-      '## Sticky notes the user shared with you',
-      'These notes live on the user\'s sticky-note board and have their "AI may read" switch on.',
-      'Treat them as durable memory the user wants you to know. Use the `sticky_notes` tool to read or update them.',
-      '',
-    ]
-    for (const note of shared.slice(0, MAX_CONTEXT_NOTES)) {
-      lines.push(`### ${note.title === '' ? '(untitled)' : note.title}  [id: ${note.id}]`)
-      const body = note.body.length > MAX_CONTEXT_BODY
-        ? `${note.body.slice(0, MAX_CONTEXT_BODY)}\n… (truncated)`
-        : note.body
-      lines.push(body === '' ? '(empty)' : body)
+  /** Which workspace a session belongs to, or '' when unknown. */
+  function workspaceOfSession(sessionId) {
+    if (sessionId === '') return ''
+    const registry = ctx.get('workspaceRegistry')
+    if (!registry) return ''
+    try {
+      for (const workspace of registry.list()) {
+        if (workspace.sessionIds.includes(sessionId)) return String(workspace.id)
+      }
+    } catch {
+      /* registry unavailable: fall back to no workspace match */
+    }
+    return ''
+  }
+
+  function truncateBody(body) {
+    if (body === '') return '(empty)'
+    return body.length > MAX_CONTEXT_BODY ? `${body.slice(0, MAX_CONTEXT_BODY)}\n… (truncated)` : body
+  }
+
+  /** Memory notes: permanent facts about the user, read in every conversation. */
+  function memoryNotes() {
+    return sortedNotes().filter((note) => note.kind === 'memory')
+  }
+
+  /** Ordinary notes whose AI scope matches this session. */
+  function scopedNotes(workspaceId) {
+    return sortedNotes().filter((note) => {
+      if (note.kind === 'memory') return false
+      if (note.aiMode === 'all') return true
+      if (note.aiMode === 'workspace') return note.aiWorkspaceId !== '' && note.aiWorkspaceId === workspaceId
+      return false
+    })
+  }
+
+  function buildContextText(sessionId) {
+    const workspaceId = workspaceOfSession(sessionId)
+    const memory = memoryNotes()
+    const shared = scopedNotes(workspaceId)
+    if (memory.length === 0 && shared.length === 0) return ''
+
+    const lines = []
+
+    if (memory.length > 0) {
+      lines.push('## Long-term memory about the user')
+      lines.push('The user keeps these as permanent facts about themselves: their personality and what they most love doing.')
+      lines.push('They apply to every conversation, so let them shape tone, suggestions, and defaults.')
       lines.push('')
+      for (const note of memory.slice(0, MAX_CONTEXT_NOTES)) {
+        lines.push(`### ${note.title === '' ? '(untitled)' : note.title}  [id: ${note.id}]`)
+        lines.push(truncateBody(note.body))
+        lines.push('')
+      }
     }
-    if (shared.length > MAX_CONTEXT_NOTES) {
-      lines.push(`(${shared.length - MAX_CONTEXT_NOTES} more shared note(s) are not shown; call \`sticky_notes\` with action "list" to see them.)`)
+
+    if (shared.length > 0) {
+      lines.push('## Sticky notes shared with you')
+      lines.push('The user opened these notes to the assistant for this scope. Use the `sticky_notes` tool to read or update them.')
+      lines.push('')
+      for (const note of shared.slice(0, MAX_CONTEXT_NOTES)) {
+        lines.push(`### ${note.title === '' ? '(untitled)' : note.title}  [id: ${note.id}]`)
+        lines.push(truncateBody(note.body))
+        lines.push('')
+      }
+      if (shared.length > MAX_CONTEXT_NOTES) {
+        lines.push(`(${shared.length - MAX_CONTEXT_NOTES} more shared note(s) are not shown; call \`sticky_notes\` with action "list".)`)
+      }
     }
+
     return lines.join('\n')
   }
 
@@ -370,7 +450,9 @@ export function apply(ctx, config = {}) {
     return {
       id: note.id,
       title: note.title,
-      aiEnabled: note.aiEnabled,
+      kind: note.kind,
+      aiMode: note.aiMode,
+      aiWorkspaceId: note.aiWorkspaceId,
       updatedAt: note.updatedAt,
       updatedBy: note.updatedBy,
       preview: note.body.replace(/\s+/g, ' ').slice(0, 160),
@@ -383,10 +465,11 @@ export function apply(ctx, config = {}) {
 
     if (action === 'list') {
       const all = sortedNotes()
+      const readable = all.filter((note) => note.kind === 'memory' || note.aiMode !== 'off').length
       return {
         result: all.length === 0
           ? 'The board is empty.'
-          : `${all.length} note(s); ${all.filter((note) => note.aiEnabled).length} readable by you.`,
+          : `${all.length} note(s); ${readable} readable by you.`,
         notes: all.map(summarize),
       }
     }
@@ -405,7 +488,9 @@ export function apply(ctx, config = {}) {
         title: clip(args?.title, MAX_TITLE_LENGTH),
         body: clip(args?.body, MAX_BODY_LENGTH),
         color: normalizeColor(args?.color, notes.size % NOTE_COLOR_COUNT),
-        aiEnabled: args?.aiEnabled === false ? false : true,
+        kind: normalizeKind(args?.kind),
+        aiMode: normalizeMode(args?.aiMode, 'all'),
+        aiWorkspaceId: clip(args?.aiWorkspaceId, MAX_ID_LENGTH),
         rev: 1,
         createdAt: now,
         updatedAt: now,
@@ -427,7 +512,11 @@ export function apply(ctx, config = {}) {
         title: typeof args?.title === 'string' ? clip(args.title, MAX_TITLE_LENGTH) : note.title,
         body: typeof args?.body === 'string' ? clip(args.body, MAX_BODY_LENGTH) : note.body,
         color: normalizeColor(args?.color, note.color),
-        aiEnabled: typeof args?.aiEnabled === 'boolean' ? args.aiEnabled : note.aiEnabled,
+        kind: normalizeKind(args?.kind ?? note.kind),
+        aiMode: normalizeMode(args?.aiMode, note.aiMode),
+        aiWorkspaceId: typeof args?.aiWorkspaceId === 'string'
+          ? clip(args.aiWorkspaceId, MAX_ID_LENGTH)
+          : note.aiWorkspaceId,
         rev: note.rev + 1,
         updatedAt: Date.now(),
         updatedBy: AI_AUTHOR,
@@ -442,16 +531,19 @@ export function apply(ctx, config = {}) {
       const id = clip(args?.id, MAX_ID_LENGTH)
       const note = notes.get(id)
       if (note === undefined) return { result: 'No note with that id.', notes: [] }
-      const aiEnabled = args?.aiEnabled === true
-      if (note.aiEnabled === aiEnabled) {
-        return { result: `Note ${id} already has its AI switch ${aiEnabled ? 'on' : 'off'}.`, id, notes: [summarize(note)] }
+      const aiMode = normalizeMode(args?.aiMode, note.aiMode)
+      const aiWorkspaceId = typeof args?.aiWorkspaceId === 'string'
+        ? clip(args.aiWorkspaceId, MAX_ID_LENGTH)
+        : note.aiWorkspaceId
+      if (note.aiMode === aiMode && note.aiWorkspaceId === aiWorkspaceId) {
+        return { result: `Note ${id} already reads in mode ${aiMode}.`, id, notes: [summarize(note)] }
       }
-      const next = { ...note, aiEnabled, rev: note.rev + 1, updatedAt: Date.now(), updatedBy: AI_AUTHOR }
+      const next = { ...note, aiMode, aiWorkspaceId, rev: note.rev + 1, updatedAt: Date.now(), updatedBy: AI_AUTHOR }
       notes.set(id, next)
       revision += 1
       await persist()
       return {
-        result: `Turned the AI switch ${aiEnabled ? 'on' : 'off'} for note ${id}.`,
+        result: `Note ${id} now reads in mode ${aiMode}${aiWorkspaceId === '' ? '' : ` for workspace ${aiWorkspaceId}`}.`,
         id,
         notes: [summarize(next)],
       }
@@ -461,19 +553,51 @@ export function apply(ctx, config = {}) {
   }
 
   function registerAgentBridge(scope) {
-    const disposeContext = scope.systemPrompt.context({
-      name: CONTEXT_NAME,
-      order: 600,
-      text: () => buildContextText(),
+    /** @type {Map<string, () => void>} */
+    const boundAgents = new Map()
+
+    /**
+     * Give one agent its own context contribution so the text can be scoped to
+     * that session's workspace instead of leaking every readable note everywhere.
+     */
+    function bind(agent) {
+      if (!agent?.ctx?.systemPrompt || typeof agent.id !== 'string') return
+      const key = agent.id
+      if (boundAgents.has(key)) return
+      try {
+        const dispose = agent.ctx.effect(() => agent.ctx.systemPrompt.context({
+          name: CONTEXT_NAME,
+          order: 600,
+          text: () => buildContextText(key),
+        }))
+        boundAgents.set(key, dispose)
+      } catch (error) {
+        console.warn(`[nexera] could not bind agent ${key}: ${error?.message ?? error}`)
+      }
+    }
+
+    // Agents that already exist (this session included) never fire agent/created.
+    try {
+      const agentsService = scope.get('agents')
+      if (agentsService && typeof agentsService.list === 'function') {
+        for (const agent of agentsService.list()) bind(agent)
+      }
+    } catch (error) {
+      console.warn(`[nexera] could not enumerate agents: ${error?.message ?? error}`)
+    }
+
+    const disposeListener = scope.on('agent/created', (payload) => {
+      bind(payload?.agent ?? payload)
     })
 
     const disposeTool = scope.tools.register({
       name: 'sticky_notes',
       description: [
         'Read and write the shared sticky-note board the user sees in the DSH sidebar.',
-        'Notes whose "AI may read" switch is on are already included in your context; use this tool for anything else.',
-        'Actions: `list` every note, `read` one note, `create` a note, `update` a note, `set_ai` to flip the readable switch.',
-        'When the user asks you to remember something for later, create a note with aiEnabled=true so it comes back in later turns.',
+        'Each note has an AI scope: `off` (yours alone), `all` (every conversation), or `workspace` (only one workspace).',
+        'Notes marked `kind: "memory"` are permanent facts about the user — their personality and what they love doing — and are read in every conversation.',
+        'Actions: `list` every note, `read` one note, `create` a note, `update` a note, `set_ai` to change a note\'s scope.',
+        'When the user asks you to remember something about themselves, create a note with kind "memory".',
       ].join(' '),
       parameters: {
         type: 'object',
@@ -495,9 +619,19 @@ export function apply(ctx, config = {}) {
             type: 'string',
             description: 'Note body, for create / update.',
           },
-          aiEnabled: {
-            type: 'boolean',
-            description: 'Whether the note may be read by you in later turns. Defaults to true on create.',
+          aiMode: {
+            type: 'string',
+            enum: ['off', 'all', 'workspace'],
+            description: 'Who may read this note. Defaults to "all" on create.',
+          },
+          aiWorkspaceId: {
+            type: 'string',
+            description: 'Workspace id, required when aiMode is "workspace".',
+          },
+          kind: {
+            type: 'string',
+            enum: ['note', 'memory'],
+            description: 'Memory notes hold permanent facts about the user and are read in every conversation.',
           },
           color: {
             type: 'integer',
@@ -521,7 +655,9 @@ export function apply(ctx, config = {}) {
                 properties: {
                   id: { type: 'string' },
                   title: { type: 'string' },
-                  aiEnabled: { type: 'boolean' },
+                  kind: { type: 'string' },
+                  aiMode: { type: 'string' },
+                  aiWorkspaceId: { type: 'string' },
                   updatedAt: { type: 'integer' },
                   updatedBy: { type: 'string' },
                   preview: { type: 'string' },
@@ -534,7 +670,14 @@ export function apply(ctx, config = {}) {
           const lines = [String(value?.result ?? 'Done.')]
           const list = Array.isArray(value?.notes) ? value.notes : []
           for (const note of list) {
-            lines.push(`- ${note.title === '' ? '(untitled)' : note.title} [${note.id}]${note.aiEnabled ? ' · AI can read' : ''}`)
+            const scope = note.kind === 'memory'
+              ? ' · memory'
+              : note.aiMode === 'all'
+                ? ' · all chats'
+                : note.aiMode === 'workspace'
+                  ? ' · one workspace'
+                  : ' · private'
+            lines.push(`- ${note.title === '' ? '(untitled)' : note.title} [${note.id}]${scope}`)
             if (note.preview) lines.push(`  ${note.preview}`)
           }
           return [{ type: 'text', text: lines.join('\n') }]
@@ -551,12 +694,20 @@ export function apply(ctx, config = {}) {
 
     return () => {
       try {
-        disposeTool()
+        disposeListener()
       } catch {
         /* already gone */
       }
+      for (const dispose of boundAgents.values()) {
+        try {
+          dispose()
+        } catch {
+          /* already gone */
+        }
+      }
+      boundAgents.clear()
       try {
-        disposeContext()
+        disposeTool()
       } catch {
         /* already gone */
       }

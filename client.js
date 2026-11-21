@@ -71,9 +71,15 @@ window.__ModuleLoader__.load({
         deletedDiscard: '放弃内容',
         nameLabel: '我的名字',
         colorLabel: '颜色',
-        aiOn: 'AI 可以读',
-        aiOff: 'AI 不读取',
-        aiHint: '开启后，AI 在之后的对话里会看到这张便利贴；关闭则只有你能看到。',
+        kindNote: '普通',
+        kindMemory: '记忆',
+        kindHint: '记忆便签用来记你的性格和最喜欢做的事，每个对话里 AI 都会读到。',
+        scopeLabel: 'AI 读取范围',
+        scopeHint: '这张便利贴对哪些对话里的 AI 可见。',
+        scopeOff: '不读取',
+        scopeAll: '所有对话',
+        scopeWorkspace: '仅某个工作区',
+        scopePick: '选择工作区…',
         justNow: '刚刚',
         minutesAgo: '{n} 分钟前',
         hoursAgo: '{n} 小时前',
@@ -120,9 +126,15 @@ window.__ModuleLoader__.load({
         deletedDiscard: 'Discard',
         nameLabel: 'My name',
         colorLabel: 'Colour',
-        aiOn: 'AI can read',
-        aiOff: "AI can't read",
-        aiHint: 'When on, the assistant sees this note in later turns. When off, only you can see it.',
+        kindNote: 'Note',
+        kindMemory: 'Memory',
+        kindHint: 'Memory notes hold your personality and what you love doing; the assistant reads them in every conversation.',
+        scopeLabel: 'AI scope',
+        scopeHint: 'Which conversations may read this note.',
+        scopeOff: 'Private',
+        scopeAll: 'All chats',
+        scopeWorkspace: 'One workspace',
+        scopePick: 'Pick a workspace…',
         justNow: 'just now',
         minutesAgo: '{n} min ago',
         hoursAgo: '{n} h ago',
@@ -224,7 +236,10 @@ window.__ModuleLoader__.load({
         title: '',
         body: '',
         color: 0,
-        aiEnabled: false,
+        kind: 'note',
+        aiMode: 'off',
+        aiWorkspaceId: '',
+        workspaces: [],
         baseRev: 0,
         dirty: false,
         status: 'idle',
@@ -273,7 +288,9 @@ window.__ModuleLoader__.load({
           title: '',
           body: '',
           color: 0,
-          aiEnabled: false,
+          kind: 'note',
+          aiMode: 'off',
+          aiWorkspaceId: '',
           baseRev: 0,
           dirty: false,
           conflict: null,
@@ -292,6 +309,7 @@ window.__ModuleLoader__.load({
           ready: true,
           notes,
           peers,
+          workspaces: Array.isArray(data.workspaces) ? data.workspaces : state.workspaces,
           error: '',
           status: state.status === 'offline' ? 'idle' : state.status,
         }
@@ -312,7 +330,9 @@ window.__ModuleLoader__.load({
             next.title = active.title
             next.body = active.body
             next.color = colorOf(active)
-            next.aiEnabled = active.aiEnabled === true
+            next.kind = active.kind === 'memory' ? 'memory' : 'note'
+            next.aiMode = active.aiMode ?? 'off'
+            next.aiWorkspaceId = active.aiWorkspaceId ?? ''
             next.baseRev = active.rev
           }
         }
@@ -354,7 +374,15 @@ window.__ModuleLoader__.load({
         if (isBlankDraft()) return true
 
         const target = state.activeId
-        const sent = { title: state.title, body: state.body, color: state.color, aiEnabled: state.aiEnabled, baseRev: state.baseRev }
+        const sent = {
+          title: state.title,
+          body: state.body,
+          color: state.color,
+          kind: state.kind,
+          aiMode: state.aiMode,
+          aiWorkspaceId: state.aiWorkspaceId,
+          baseRev: state.baseRev,
+        }
         patch({ status: 'saving' })
 
         try {
@@ -366,7 +394,16 @@ window.__ModuleLoader__.load({
               name: state.me,
               op: {
                 type: 'save',
-                note: { id: target, title: sent.title, body: sent.body, color: sent.color, aiEnabled: sent.aiEnabled, baseRev: sent.baseRev },
+                note: {
+                  id: target,
+                  title: sent.title,
+                  body: sent.body,
+                  color: sent.color,
+                  kind: sent.kind,
+                  aiMode: sent.aiMode,
+                  aiWorkspaceId: sent.aiWorkspaceId,
+                  baseRev: sent.baseRev,
+                },
               },
             }),
           })
@@ -404,7 +441,9 @@ window.__ModuleLoader__.load({
           const stillSame = state.title === sent.title
             && state.body === sent.body
             && state.color === sent.color
-            && state.aiEnabled === sent.aiEnabled
+            && state.kind === sent.kind
+            && state.aiMode === sent.aiMode
+            && state.aiWorkspaceId === sent.aiWorkspaceId
           patch({
             ...shared,
             status: stillSame ? 'saved' : 'unsaved',
@@ -479,7 +518,9 @@ window.__ModuleLoader__.load({
             title: note.title,
             body: note.body,
             color: colorOf(note),
-            aiEnabled: note.aiEnabled === true,
+            kind: note.kind === 'memory' ? 'memory' : 'note',
+            aiMode: note.aiMode ?? 'off',
+            aiWorkspaceId: note.aiWorkspaceId ?? '',
             baseRev: note.rev,
             dirty: false,
             conflict: null,
@@ -494,7 +535,9 @@ window.__ModuleLoader__.load({
             title: '',
             body: '',
             color: colorOf({ id }),
-            aiEnabled: true,
+            kind: 'note',
+            aiMode: 'all',
+            aiWorkspaceId: '',
             baseRev: 0,
             dirty: false,
             conflict: null,
@@ -514,8 +557,22 @@ window.__ModuleLoader__.load({
           patch({ color, dirty: true, status: 'unsaved' })
           scheduleSave()
         },
-        toggleAi() {
-          patch({ aiEnabled: !state.aiEnabled, dirty: true, status: 'unsaved' })
+        setAiMode(aiMode, aiWorkspaceId) {
+          const nextMode = aiMode === 'all' || aiMode === 'workspace' ? aiMode : 'off'
+          const nextWorkspace = nextMode === 'workspace' ? (aiWorkspaceId ?? state.aiWorkspaceId) : ''
+          if (nextMode === state.aiMode && nextWorkspace === state.aiWorkspaceId) return
+          patch({ aiMode: nextMode, aiWorkspaceId: nextWorkspace, dirty: true, status: 'unsaved' })
+          scheduleSave()
+        },
+        setKind(kind) {
+          const nextKind = kind === 'memory' ? 'memory' : 'note'
+          if (nextKind === state.kind) return
+          patch({
+            kind: nextKind,
+            aiMode: nextKind === 'memory' ? 'all' : state.aiMode,
+            dirty: true,
+            status: 'unsaved',
+          })
           scheduleSave()
         },
         /** Finish the editor: persist, then come back to the wall. */
@@ -538,7 +595,9 @@ window.__ModuleLoader__.load({
               title: pending.current.title,
               body: pending.current.body,
               color: colorOf(pending.current),
-              aiEnabled: pending.current.aiEnabled === true,
+              kind: pending.current.kind === 'memory' ? 'memory' : 'note',
+              aiMode: pending.current.aiMode ?? 'off',
+              aiWorkspaceId: pending.current.aiWorkspaceId ?? '',
               baseRev: pending.current.rev,
               dirty: false,
               conflict: null,
@@ -550,7 +609,16 @@ window.__ModuleLoader__.load({
           }
         },
         reviveDraft() {
-          patch({ activeId: newNoteId(), aiEnabled: true, baseRev: 0, dirty: true, deletedNotice: false, status: 'unsaved' })
+          patch({
+            activeId: newNoteId(),
+            kind: 'note',
+            aiMode: 'all',
+            aiWorkspaceId: '',
+            baseRev: 0,
+            dirty: true,
+            deletedNotice: false,
+            status: 'unsaved',
+          })
           scheduleSave()
         },
         dropDraft() {
@@ -690,16 +758,20 @@ ${PALETTE_CSS}
 .dsn-card-body[data-empty="true"]{opacity:.42;font-style:italic}
 .dsn-card-foot{display:block;margin-top:8px;font-size:10.5px;font-weight:600;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsn-card-ai{margin-left:6px;padding:0 4px;border:1px solid currentColor;border-radius:4px;font-size:9px;font-weight:800;letter-spacing:.04em;vertical-align:1px;opacity:.85}
+.dsn-card-ai[data-mode="workspace"]{border-style:dashed;opacity:.6}
+.dsn-card-ai[data-mode="memory"]{font-size:10px;letter-spacing:0;opacity:.95}
 
 .dsn-edit{flex:1;min-height:0;display:flex;flex-direction:column;padding:16px 26px 18px;gap:12px;background:linear-gradient(180deg,var(--paper-tint,rgba(255,214,102,.18)),rgba(0,0,0,0) 170px)}
-.dsn-edit-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none}
+.dsn-edit-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;flex-wrap:wrap}
 .dsn-edit-swatches{display:flex;align-items:center;gap:9px;flex:none}
-.dsn-ai{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1.5px solid var(--dsn-line);background:transparent;color:var(--dsn-ink2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease}
-.dsn-ai:hover{border-color:var(--dsn-ink3)}
-.dsn-ai:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:2px}
-.dsn-ai-dot{width:7px;height:7px;border-radius:50%;background:var(--dsn-ink3);transition:background .15s ease,box-shadow .15s ease}
-.dsn-ai[data-on="true"]{background:rgba(63,196,124,.16);border-color:rgba(63,196,124,.5);color:var(--dsn-ink)}
-.dsn-ai[data-on="true"] .dsn-ai-dot{background:#3FC47C;box-shadow:0 0 0 3px rgba(63,196,124,.22)}
+.dsn-edit-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.dsn-kind{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 11px;border-radius:999px;border:1.5px solid var(--dsn-line);background:transparent;color:var(--dsn-ink2);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease,color .15s ease}
+.dsn-kind:hover{border-color:var(--dsn-ink3)}
+.dsn-kind:focus-visible{outline:3px solid rgba(255,214,102,.9);outline-offset:2px}
+.dsn-kind[data-memory="true"]{background:rgba(255,193,7,.2);border-color:rgba(255,193,7,.65);color:var(--dsn-ink)}
+.dsn-scope{height:26px;padding:0 8px;border-radius:8px;border:1.5px solid var(--dsn-line);background:var(--dsn-surface-1);color:var(--dsn-ink);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;max-width:190px}
+.dsn-scope:focus{outline:none;border-color:#FFD666}
+.dsn-scope:disabled{opacity:.45;cursor:default}
 .dsn-swatch{width:24px;height:24px;padding:0;border:2.5px solid #fff;border-radius:50%;cursor:pointer;background:var(--paper-bg,#FFF3C4);box-shadow:0 3px 9px rgba(0,0,0,.18);transition:transform .2s var(--dsn-bounce),box-shadow .18s ease}
 .dsn-swatch:hover{transform:scale(1.16)}
 .dsn-swatch:focus-visible{outline:3px solid rgba(255,214,102,.95);outline-offset:2px}
@@ -925,9 +997,17 @@ ${PALETTE_CSS}
                     'span',
                     { className: 'dsn-card-foot' },
                     `${note.updatedBy || '—'} · ${timeLabel(note.updatedAt)}`,
-                    note.aiEnabled === true
-                      ? h('span', { className: 'dsn-card-ai', title: t('aiHint') }, 'AI')
-                      : null,
+                    note.kind === 'memory' || note.aiMode === 'all' || note.aiMode === 'workspace'
+                    ? h(
+                      'span',
+                      {
+                        className: 'dsn-card-ai',
+                        'data-mode': note.kind === 'memory' ? 'memory' : note.aiMode,
+                        title: note.kind === 'memory' ? t('kindHint') : t('scopeHint'),
+                      },
+                      note.kind === 'memory' ? '★' : 'AI',
+                    )
+                    : null,
                   ),
                 ),
               )
@@ -966,17 +1046,52 @@ ${PALETTE_CSS}
             })),
           ),
           h(
-            'button',
-            {
-              type: 'button',
-              className: 'dsn-ai',
-              'data-on': state.aiEnabled ? 'true' : 'false',
-              'aria-pressed': state.aiEnabled ? 'true' : 'false',
-              title: t('aiHint'),
-              onClick: () => store.toggleAi(),
-            },
-            h('span', { className: 'dsn-ai-dot' }),
-            t(state.aiEnabled ? 'aiOn' : 'aiOff'),
+            'div',
+            { className: 'dsn-edit-controls' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsn-kind',
+                'data-memory': state.kind === 'memory' ? 'true' : 'false',
+                'aria-pressed': state.kind === 'memory' ? 'true' : 'false',
+                title: t('kindHint'),
+                onClick: () => store.setKind(state.kind === 'memory' ? 'note' : 'memory'),
+              },
+              '★',
+              t(state.kind === 'memory' ? 'kindMemory' : 'kindNote'),
+            ),
+            h(
+              'select',
+              {
+                className: 'dsn-scope',
+                value: state.kind === 'memory' ? 'all' : state.aiMode,
+                'aria-label': t('scopeLabel'),
+                title: t('scopeHint'),
+                disabled: state.kind === 'memory',
+                onChange: (event) => store.setAiMode(event.target.value),
+              },
+              h('option', { value: 'off' }, t('scopeOff')),
+              h('option', { value: 'all' }, t('scopeAll')),
+              h('option', { value: 'workspace' }, t('scopeWorkspace')),
+            ),
+            state.aiMode === 'workspace' && state.kind !== 'memory'
+              ? h(
+                'select',
+                {
+                  className: 'dsn-scope',
+                  value: state.aiWorkspaceId,
+                  'aria-label': t('scopeWorkspace'),
+                  onChange: (event) => store.setAiMode('workspace', event.target.value),
+                },
+                h('option', { value: '' }, t('scopePick')),
+                state.workspaces.map((workspace) => h(
+                  'option',
+                  { key: workspace.id, value: workspace.id },
+                  workspace.title,
+                )),
+              )
+              : null,
           ),
         ),
         state.deletedNotice

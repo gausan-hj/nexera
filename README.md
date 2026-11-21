@@ -25,14 +25,21 @@ opens the same DSH page.
 - **Delete protection** — a note deleted by someone else never eats your draft; it can
   be re-homed as a new note.
 
-## AI can read your notes (per-note switch)
+## AI memory (scoped, per note)
 
-Every note carries an **AI can read** switch in its editor.
+Every note carries two controls in its editor.
 
-- **On** — the note joins the assistant's runtime context on every following turn,
-  and the sidebar board marks the card with a small `AI` tag. Useful for standing
-  facts you do not want to repeat: project conventions, names, decisions.
-- **Off** — the note is yours alone; the model never sees its text.
+**Note / Memory** — a *memory* note holds permanent facts about you: your personality
+and what you love doing. Memory notes are read in **every** conversation, and the
+board marks them with a ★.
+
+**AI scope** — who may read an ordinary note:
+
+| Scope | Read in |
+|---|---|
+| `Private` | nothing — only you see it |
+| `All chats` | every conversation |
+| `One workspace` | only conversations inside the workspace you pick |
 
 The board is also a tool the agent can call:
 
@@ -40,12 +47,12 @@ The board is also a tool the agent can call:
 |---|---|
 | `sticky_notes` | `list` · `read` · `create` · `update` · `set_ai` |
 
-So "remember that the build runs on port 8080" makes the assistant write a note with
-the switch already on, and that note comes back in later turns on its own. The
-assistant can also flip the switch on an existing note, or read one you point it at.
+So "remember that I hate long preambles" makes the assistant write the fact into a
+memory note, and from then on it applies in every conversation without you repeating
+it. The assistant can also read a note you point it at, update one, or change its
+scope.
 
-New notes created by the assistant default to readable; new notes created by you
-default to readable too, and one click turns it off.
+New notes default to `All chats`; one click makes one private again.
 
 ## Install
 
