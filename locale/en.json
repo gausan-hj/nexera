@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Nexera for DSH",
+    "description": "Nexera is a growing DeepSeek Harness workspace plugin; version 1.0.0-beta ships its first feature, shared sticky notes. The sidebar gains a Sticky notes panel beside Plugins and Automation tasks: a wall of taped-up note cards, a full-page editor behind New note, and automatic saving to the Host. Every browser page this DSH instance serves reads the same wall, so a second person who opens the page edits the very same notes; the Invite button in the panel header copies the link to send them. Notes live in $DSH_HOME/sticky-notes/notes.json on this machine and are never sent anywhere else. Turning the plugin off removes the sidebar row and the wall; the notes file stays until you delete it.",
+    "detail": "docs/DETAIL.md"
+  }
+}
