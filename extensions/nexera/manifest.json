@@ -1,0 +1,16 @@
+{
+  "name": "便利贴",
+  "version": "1.0.0",
+  "apiVersion": "1",
+  "main": "index.html",
+  "description": "在手机上查看和新增 Nexera 的便利贴与任务，改完自动同步回电脑。",
+  "capabilities": ["content.read", "host.data"],
+  "hostData": {
+    "service": "nexera",
+    "match": ["/sticky-notes/"]
+  },
+  "entry": {
+    "name": "便利贴",
+    "slot": "normal"
+  }
+}

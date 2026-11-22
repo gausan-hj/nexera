@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>便利贴</title>
+<style>
+  :root {
+    --paper-0: #FFD666;
+    --paper-1: #FFB3D1;
+    --paper-2: #9BDBFF;
+    --paper-3: #A8E6A3;
+    --paper-4: #C7A8FF;
+    --paper-5: #FFBB8A;
+    color-scheme: light dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+  }
+
+  body {
+    background: var(--dsh-theme-background, #16171b);
+    color: var(--dsh-theme-text, #f9fafb);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding-top: var(--dsh-safe-top, 0px);
+    padding-bottom: var(--dsh-safe-bottom, 0px);
+  }
+
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 8px;
+    flex: none;
+    border-bottom: 1px solid var(--dsh-theme-border, #2a2b31);
+  }
+
+  .tab {
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--dsh-theme-text-secondary, #a1a1aa);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .tab[aria-selected="true"] {
+    background: var(--dsh-theme-surface, #1f2026);
+    color: var(--dsh-theme-text, #f9fafb);
+  }
+
+  .spacer { flex: 1; }
+
+  .add {
+    height: 32px;
+    min-width: 32px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--dsh-theme-primary, #4f7cff);
+    color: #fff;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 14px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .item {
+    position: relative;
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 13px 15px 12px 18px;
+    border: 1px solid var(--dsh-theme-border, #2a2b31);
+    border-radius: 14px;
+    background: var(--dsh-theme-surface, #1f2026);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    overflow: hidden;
+  }
+
+  .item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--edge, var(--paper-0));
+  }
+
+  .item-title {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 700;
+    line-height: 1.4;
+    word-break: break-word;
+  }
+
+  .item-body {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--dsh-theme-text-secondary, #a1a1aa);
+    word-break: break-word;
+  }
+
+  .item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--dsh-theme-text-muted, #71717a);
+  }
+
+  .chip {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: rgba(127, 127, 127, 0.16);
+    font-weight: 600;
+  }
+
+  .chip.warn { background: rgba(255, 177, 61, 0.22); color: #b26a00; }
+  .chip.danger { background: rgba(255, 107, 107, 0.2); color: #c93a3a; }
+  .chip.done { background: rgba(63, 196, 124, 0.2); color: #1f7a4a; }
+
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--dsh-theme-text-secondary, #a1a1aa);
+  }
+
+  .empty strong {
+    font-size: 15px;
+    color: var(--dsh-theme-text, #f9fafb);
+  }
+
+  .editor {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--dsh-theme-background, #16171b);
+    padding-top: var(--dsh-safe-top, 0px);
+    padding-bottom: var(--dsh-safe-bottom, 0px);
+    z-index: 10;
+  }
+
+  .editor[hidden] { display: none; }
+
+  .editor-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 8px;
+    flex: none;
+    border-bottom: 1px solid var(--dsh-theme-border, #2a2b31);
+  }
+
+  .ghost {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--dsh-theme-border, #2a2b31);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--dsh-theme-text, #f9fafb);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .ghost.danger { color: var(--dsh-theme-danger, #e5484d); border-color: rgba(229, 72, 77, 0.4); }
+
+  .editor-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .title-input,
+  .body-input {
+    width: 100%;
+    border: 1px solid var(--dsh-theme-border, #2a2b31);
+    border-radius: 12px;
+    background: var(--dsh-theme-surface, #1f2026);
+    color: var(--dsh-theme-text, #f9fafb);
+    font: inherit;
+    padding: 11px 12px;
+  }
+
+  .title-input {
+    flex: none;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .body-input {
+    flex: 1;
+    min-height: 120px;
+    resize: none;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+
+  .title-input:focus,
+  .body-input:focus,
+  .field select:focus,
+  .field input:focus {
+    outline: none;
+    border-color: var(--dsh-theme-primary, #4f7cff);
+  }
+
+  .fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    flex: none;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 130px;
+  }
+
+  .field span {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--dsh-theme-text-muted, #71717a);
+  }
+
+  .field select,
+  .field input {
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--dsh-theme-border, #2a2b31);
+    border-radius: 10px;
+    background: var(--dsh-theme-surface, #1f2026);
+    color: var(--dsh-theme-text, #f9fafb);
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .status {
+    padding: 4px 14px 10px;
+    font-size: 11.5px;
+    color: var(--dsh-theme-text-muted, #71717a);
+    flex: none;
+  }
+
+  .status.error { color: var(--dsh-theme-danger, #e5484d); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar">
+    <button class="tab" id="tab-notes" aria-selected="true" type="button">便利贴</button>
+    <button class="tab" id="tab-tasks" aria-selected="false" type="button">任务</button>
+    <span class="spacer"></span>
+    <button class="add" id="add" type="button">＋ 新建</button>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="status" id="status"></div>
+</div>
+
+<div class="editor" id="editor" hidden>
+  <div class="editor-bar">
+    <button class="ghost" id="back" type="button">← 返回</button>
+    <span class="spacer"></span>
+    <button class="ghost danger" id="remove" type="button">删除</button>
+    <button class="add" id="save" type="button">保存</button>
+  </div>
+  <div class="editor-body">
+    <input class="title-input" id="title" type="text" placeholder="标题" autocomplete="off">
+    <div class="fields" id="fields" hidden>
+      <label class="field">
+        <span>状态</span>
+        <select id="status">
+          <option value="todo">待办</option>
+          <option value="doing">进行中</option>
+          <option value="done">已完成</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>截止日期</span>
+        <input id="due" type="date">
+      </label>
+      <label class="field">
+        <span>预计（分钟）</span>
+        <input id="estimate" type="number" min="0" step="5" inputmode="numeric">
+      </label>
+    </div>
+    <textarea class="body-input" id="body" placeholder="写点什么…"></textarea>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+
+  var API = '/sticky-notes/state'
+  var CLIENT_KEY = 'nexera.mobile.client'
+  var NAME_KEY = 'nexera.mobile.name'
+  var PAPERS = ['#FFD666', '#FFB3D1', '#9BDBFF', '#A8E6A3', '#C7A8FF', '#FFBB8A']
+  var TICK = 5000
+
+  var state = {
+    tab: 'notes',
+    items: [],
+    editing: null,
+    dirty: false,
+    busy: false,
+    timer: 0
+  }
+
+  var el = {
+    list: document.getElementById('list'),
+    status: document.getElementById('status'),
+    tabNotes: document.getElementById('tab-notes'),
+    tabTasks: document.getElementById('tab-tasks'),
+    add: document.getElementById('add'),
+    editor: document.getElementById('editor'),
+    back: document.getElementById('back'),
+    save: document.getElementById('save'),
+    remove: document.getElementById('remove'),
+    title: document.getElementById('title'),
+    body: document.getElementById('body'),
+    fields: document.getElementById('fields'),
+    statusSel: document.getElementById('status'),
+    due: document.getElementById('due'),
+    estimate: document.getElementById('estimate')
+  }
+
+  function readKey(key, fallback) {
+    try {
+      var value = window.localStorage.getItem(key)
+      return value === null || value === '' ? fallback : value
+    } catch (error) {
+      return fallback
+    }
+  }
+
+  function writeKey(key, value) {
+    try {
+      window.localStorage.setItem(key, value)
+    } catch (error) {
+      /* storage may be unavailable on file:// */
+    }
+  }
+
+  var clientId = readKey(CLIENT_KEY, '')
+  if (clientId === '') {
+    clientId = 'm-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+    writeKey(CLIENT_KEY, clientId)
+  }
+  var displayName = readKey(NAME_KEY, '手机')
+
+  function setStatus(text, isError) {
+    el.status.textContent = text || ''
+    el.status.className = isError ? 'status error' : 'status'
+  }
+
+  function colorOf(item) {
+    var index = typeof item.color === 'number' && item.color >= 0 && item.color < PAPERS.length
+      ? item.color
+      : 0
+    return PAPERS[index]
+  }
+
+  function pad2(value) {
+    return value < 10 ? '0' + value : String(value)
+  }
+
+  function dateValue(ms) {
+    if (!ms) return ''
+    var d = new Date(ms)
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+  }
+
+  function shortDate(ms) {
+    var d = new Date(ms)
+    return (d.getMonth() + 1) + '/' + d.getDate()
+  }
+
+  function isToday(ms) {
+    var a = new Date(ms)
+    var b = new Date()
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  }
+
+  function byKind(kind) {
+    return state.items.filter(function (item) {
+      var itemKind = item.kind === 'memory' || item.kind === 'task' || item.kind === 'link' ? item.kind : 'note'
+      return kind === 'tasks' ? itemKind === 'task' : itemKind !== 'task'
+    })
+  }
+
+  function request(method, body) {
+    var url = API + '?client=' + encodeURIComponent(clientId) + '&name=' + encodeURIComponent(displayName)
+    var options = { method: method, cache: 'no-store' }
+    if (body !== undefined) {
+      options.headers = { 'content-type': 'application/json' }
+      options.body = JSON.stringify(body)
+    }
+    return fetch(url, options).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status)
+      return response.json()
+    })
+  }
+
+  function applyState(data) {
+    if (Array.isArray(data.notes)) {
+      state.items = data.notes
+    }
+    render()
+  }
+
+  function refresh() {
+    return request('GET').then(applyState).catch(function (error) {
+      setStatus('连不上电脑：' + error.message, true)
+    })
+  }
+
+  function schedule() {
+    if (state.timer) window.clearTimeout(state.timer)
+    state.timer = window.setTimeout(function () {
+      if (state.editing === null && document.visibilityState !== 'hidden') {
+        refresh().then(schedule, schedule)
+      } else {
+        schedule()
+      }
+    }, TICK)
+  }
+
+  function chip(text, tone) {
+    var span = document.createElement('span')
+    span.className = 'chip' + (tone ? ' ' + tone : '')
+    span.textContent = text
+    return span
+  }
+
+  function render() {
+    var items = byKind(state.tab)
+    el.list.innerHTML = ''
+
+    if (items.length === 0) {
+      var empty = document.createElement('div')
+      empty.className = 'empty'
+      var strong = document.createElement('strong')
+      strong.textContent = state.tab === 'tasks' ? '还没有任务' : '还没有便利贴'
+      var hint = document.createElement('div')
+      hint.textContent = '点右上角「＋ 新建」'
+      empty.appendChild(strong)
+      empty.appendChild(hint)
+      el.list.appendChild(empty)
+      return
+    }
+
+    items.forEach(function (item) {
+      var button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'item'
+      button.style.setProperty('--edge', colorOf(item))
+
+      var title = document.createElement('span')
+      title.className = 'item-title'
+      title.textContent = item.title === '' ? '未命名' : item.title
+      button.appendChild(title)
+
+      var preview = String(item.body || '').replace(/\s+/g, ' ').trim()
+      if (preview !== '') {
+        var body = document.createElement('span')
+        body.className = 'item-body'
+        body.textContent = preview
+        button.appendChild(body)
+      }
+
+      var meta = document.createElement('div')
+      meta.className = 'item-meta'
+
+      if (state.tab === 'tasks') {
+        meta.appendChild(chip(item.status === 'doing' ? '进行中' : item.status === 'done' ? '已完成' : '待办',
+          item.status === 'done' ? 'done' : ''))
+        if (item.dueAt) {
+          var overdue = item.status !== 'done' && item.dueAt < Date.now() - 86400000
+          meta.appendChild(chip(isToday(item.dueAt) ? '今天到期' : shortDate(item.dueAt), overdue ? 'danger' : (isToday(item.dueAt) ? 'warn' : '')))
+        }
+        if (item.estimateMin > 0) meta.appendChild(chip(item.estimateMin + ' 分钟'))
+      } else if (item.kind === 'memory') {
+        meta.appendChild(chip('★ 记忆'))
+      } else if (item.aiMode === 'all') {
+        meta.appendChild(chip('AI 可读'))
+      }
+
+      meta.appendChild(chip(item.updatedBy || '—'))
+      button.appendChild(meta)
+
+      button.addEventListener('click', function () { openEditor(item) })
+      el.list.appendChild(button)
+    })
+  }
+
+  function setTab(tab) {
+    state.tab = tab
+    el.tabNotes.setAttribute('aria-selected', tab === 'notes' ? 'true' : 'false')
+    el.tabTasks.setAttribute('aria-selected', tab === 'tasks' ? 'true' : 'false')
+    render()
+  }
+
+  function openEditor(item) {
+    state.editing = item
+    state.dirty = false
+    el.title.value = item.title || ''
+    el.body.value = item.body || ''
+    el.statusSel.value = item.status || 'todo'
+    el.due.value = dateValue(item.dueAt)
+    el.estimate.value = item.estimateMin > 0 ? String(item.estimateMin) : ''
+    var isTask = (item.kind || 'note') === 'task'
+    el.fields.hidden = !isTask
+    el.remove.hidden = !item.id || item.rev === 0
+    el.editor.hidden = false
+    el.title.focus()
+  }
+
+  function closeEditor() {
+    state.editing = null
+    state.dirty = false
+    el.editor.hidden = true
+  }
+
+  function newItem() {
+    var isTask = state.tab === 'tasks'
+    openEditor({
+      id: (isTask ? 'task-' : 'note-') + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+      title: '',
+      body: '',
+      kind: isTask ? 'task' : 'note',
+      color: state.items.length % PAPERS.length,
+      aiMode: isTask ? 'off' : 'all',
+      status: 'todo',
+      priority: 'normal',
+      dueAt: 0,
+      estimateMin: 0,
+      url: '',
+      read: false,
+      rev: 0
+    })
+  }
+
+  function save() {
+    if (state.editing === null || state.busy) return
+    var item = state.editing
+    var note = {
+      id: item.id,
+      title: el.title.value,
+      body: el.body.value,
+      color: typeof item.color === 'number' ? item.color : 0,
+      kind: item.kind || 'note',
+      aiMode: item.aiMode || 'off',
+      aiWorkspaceId: item.aiWorkspaceId || '',
+      status: el.statusSel.value || 'todo',
+      priority: item.priority || 'normal',
+      dueAt: el.due.value ? Date.parse(el.due.value + 'T12:00:00') : 0,
+      estimateMin: parseInt(el.estimate.value, 10) > 0 ? parseInt(el.estimate.value, 10) : 0,
+      url: item.url || '',
+      read: item.read === true,
+      baseRev: item.rev || 0
+    }
+
+    state.busy = true
+    setStatus('保存中…')
+    request('POST', { client: clientId, name: displayName, op: { type: 'save', note: note } })
+      .then(function (data) {
+        state.busy = false
+        if (data.failed) throw new Error(data.failed)
+        if (data.conflict === true) {
+          setStatus('这条在电脑上已经被改过，请返回刷新后再改', true)
+          return
+        }
+        if (data.deleted === true) {
+          setStatus('这条已被删除', true)
+          return
+        }
+        if (Array.isArray(data.notes)) state.items = data.notes
+        state.dirty = false
+        setStatus('已保存')
+        closeEditor()
+        render()
+        schedule()
+      })
+      .catch(function (error) {
+        state.busy = false
+        setStatus('保存失败：' + error.message, true)
+      })
+  }
+
+  function removeItem() {
+    if (state.editing === null || state.busy) return
+    if (!window.confirm('确定删除这一条？')) return
+    var id = state.editing.id
+    state.busy = true
+    setStatus('删除中…')
+    request('POST', { client: clientId, name: displayName, op: { type: 'delete', id: id } })
+      .then(function (data) {
+        state.busy = false
+        if (Array.isArray(data.notes)) state.items = data.notes
+        setStatus('已删除')
+        closeEditor()
+        render()
+        schedule()
+      })
+      .catch(function (error) {
+        state.busy = false
+        setStatus('删除失败：' + error.message, true)
+      })
+  }
+
+  el.tabNotes.addEventListener('click', function () { setTab('notes') })
+  el.tabTasks.addEventListener('click', function () { setTab('tasks') })
+  el.add.addEventListener('click', newItem)
+  el.back.addEventListener('click', closeEditor)
+  el.save.addEventListener('click', save)
+  el.remove.addEventListener('click', removeItem)
+  el.title.addEventListener('input', function () { state.dirty = true })
+  el.body.addEventListener('input', function () { state.dirty = true })
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && state.editing === null) refresh()
+  })
+
+  setStatus('加载中…')
+  refresh().then(function () {
+    setStatus('')
+    schedule()
+  }).catch(function () {
+    schedule()
+  })
+})()
+</script>
+</body>
+</html>

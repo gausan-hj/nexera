@@ -54,6 +54,34 @@ scope.
 
 New notes default to `All chats`; one click makes one private again.
 
+## On your phone
+
+The package also ships a **mobile extension** for the DSH phone app, so the same
+board is reachable from your pocket.
+
+- `package.json` declares `"dshMobileExtensions": "extensions"` — the folder that
+  holds the phone pages.
+- `dshMobileDataServices` registers a data service so the phone page can talk to
+  this plugin's own HTTP route:
+
+  ```json
+  "dshMobileDataServices": [{ "service": "nexera", "allow": ["/sticky-notes/"] }]
+  ```
+
+- `extensions/nexera/` holds the page: `manifest.json` (asks for `host.data`, states
+  the same `/sticky-notes/` prefix) and a self-contained `index.html` that follows
+  the app's `--dsh-theme-*` variables.
+
+Install it from the phone app's extension list and approve the data permission; a
+**便利贴 / Sticky notes** entry then sits in the phone's right-hand entry bar. From
+there you can scroll notes and tasks, add one, edit it, or tick a task off — all
+against the same Host route, so desktop and phone converge within a couple of
+seconds.
+
+Note the phone page is deliberately narrower than the desktop board: no colour
+picker, no AI-scope editor, no drag between columns. It is for capture and triage
+on the go.
+
 ## Install
 
 ### From GitHub (one link)
