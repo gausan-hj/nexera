@@ -832,6 +832,22 @@ ${PALETTE_CSS}
 .dsn-icon-dot{position:absolute;top:-2px;right:-3px;width:7px;height:7px;border-radius:50%;background:#FF9F68;box-shadow:0 0 0 2px var(--dsw-specific-sidebar-fill,transparent)}
 .dsn-icon-dot[data-tone="error"]{background:#FF6B6B}
 
+.dsn-ic-line{stroke-dasharray:100;stroke-dashoffset:0}
+@keyframes dsn-draw{from{stroke-dashoffset:100}to{stroke-dashoffset:0}}
+.dsn-btn:hover .dsn-ic-line{animation:dsn-draw .55s ease both}
+.dsn-icon-wrap[data-active="true"] .dsn-ic-line{animation:dsn-draw .6s ease both}
+.dsn-back{transition:transform .22s var(--dsn-bounce)}
+.dsn-icon-btn:hover .dsn-back{transform:translateX(-2.5px)}
+.dsn-icon-btn:active .dsn-back{transform:translateX(-4px) scale(.94)}
+.dsn-plus{transition:transform .32s var(--dsn-bounce)}
+.dsn-btn:hover .dsn-plus{transform:rotate(90deg)}
+.dsn-btn:active .dsn-plus{transform:rotate(90deg) scale(.88)}
+.dsn-star{transition:transform .3s var(--dsn-bounce)}
+.dsn-kind[data-memory="true"] .dsn-star{animation:dsn-star-pop .5s var(--dsn-bounce) both}
+.dsn-kind:not([data-memory="true"]):hover .dsn-star{animation:dsn-star-wiggle .6s ease}
+@keyframes dsn-star-pop{0%{transform:scale(.5) rotate(-30deg)}60%{transform:scale(1.22) rotate(10deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes dsn-star-wiggle{0%,100%{transform:rotate(0)}28%{transform:rotate(-14deg)}58%{transform:rotate(11deg)}}
+
 .dsn-page{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,#fff);color:var(--dsn-ink);font:inherit;font-size:13px;line-height:1.55}
 .dsn-page-head{display:flex;align-items:center;gap:12px;padding:14px 22px 12px;border-bottom:1px solid var(--dsn-line);background:linear-gradient(180deg,rgba(255,214,102,.20),rgba(255,214,102,0));flex:none}
 .dsn-badge{width:30px;height:30px;flex:none;border-radius:11px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,#FFD666,#FF9F68);color:#fff;box-shadow:0 4px 12px rgba(255,159,104,.42)}
@@ -979,7 +995,7 @@ ${PALETTE_CSS}
 .dsn-invite-row{display:flex;align-items:center;gap:8px}
 .dsn-invite-url{flex:1;min-width:0;padding:7px 12px;border:1.5px solid var(--dsn-line);border-radius:999px;background:var(--dsw-alias-bg-base,transparent);color:var(--dsn-ink2);font-family:var(--dsw-font-markdown-code-font-family,ui-monospace,monospace);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-@media (prefers-reduced-motion:reduce){.dsn-screen,.dsn-card{animation:none !important}.dsn-btn,.dsn-swatch,.dsn-card,.dsn-task,.dsn-link{transition:none}}
+@media (prefers-reduced-motion:reduce){.dsn-screen,.dsn-card,.dsn-ic-line,.dsn-star,.dsn-plus,.dsn-back{animation:none !important}.dsn-btn,.dsn-swatch,.dsn-card,.dsn-task,.dsn-link,.dsn-back,.dsn-plus,.dsn-star{transition:none}}
 @media (max-width:760px){
 .dsn-page-head{padding:12px 14px 11px;gap:8px}
 .dsn-heading{font-size:14px}
@@ -1013,10 +1029,92 @@ ${PALETTE_CSS}
           'aria-hidden': true,
           focusable: false,
         },
-        h('path', { d: 'M4.2 3.6h11.6a1 1 0 0 1 1 1v7.4l-4.2 4.2H4.2a1 1 0 0 1-1-1V4.6a1 1 0 0 1 1-1Z' }),
-        h('path', { d: 'M16.8 12h-3.4a.8.8 0 0 0-.8.8v3.4' }),
-        h('path', { d: 'M6.4 7.4h7.2' }),
-        h('path', { d: 'M6.4 10.2h4.6' }),
+        h('path', { d: 'M4.2 3.6h11.6a1 1 0 0 1 1 1v7.4l-4.2 4.2H4.2a1 1 0 0 1-1-1V4.6a1 1 0 0 1 1-1Z', pathLength: 100, className: 'dsn-ic-line' }),
+        h('path', { d: 'M16.8 12h-3.4a.8.8 0 0 0-.8.8v3.4', pathLength: 100, className: 'dsn-ic-line' }),
+        h('path', { d: 'M6.4 7.4h7.2', pathLength: 100, className: 'dsn-ic-line' }),
+        h('path', { d: 'M6.4 10.2h4.6', pathLength: 100, className: 'dsn-ic-line' }),
+      )
+    }
+
+    /** Line art that draws itself when its button is hovered or its row is selected. */
+    function PlusIcon({ size }) {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          'aria-hidden': true,
+          focusable: false,
+          className: 'dsn-plus',
+        },
+        h('path', { d: 'M8 3.2v9.6' }),
+        h('path', { d: 'M3.2 8h9.6' }),
+      )
+    }
+
+    function CheckIcon({ size }) {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 16 16',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+          focusable: false,
+        },
+        h('path', { d: 'M3.4 8.6l3.1 3.1 6.1-7.2', pathLength: 100, className: 'dsn-ic-line' }),
+      )
+    }
+
+    function BackIcon({ size }) {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 20 20',
+          width: size,
+          height: size,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.9,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+          focusable: false,
+          className: 'dsn-back',
+        },
+        h('path', { d: 'M11.8 4.6 6.4 10l5.4 5.4' }),
+        h('path', { d: 'M6.6 10h7.2', opacity: 0.55 }),
+      )
+    }
+
+    function StarIcon({ filled, size }) {
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 20 20',
+          width: size,
+          height: size,
+          'aria-hidden': true,
+          focusable: false,
+          className: 'dsn-star',
+        },
+        h('path', {
+          d: 'M10 2.6l2.35 4.76 5.25.77-3.8 3.7.9 5.23L10 14.55l-4.7 2.47.9-5.23-3.8-3.7 5.25-.77z',
+          fill: filled ? 'currentColor' : 'none',
+          stroke: 'currentColor',
+          strokeWidth: 1.5,
+          strokeLinejoin: 'round',
+        }),
       )
     }
 
@@ -1043,13 +1141,13 @@ ${PALETTE_CSS}
       )
     }
 
-    function PanelIcon({ size }) {
+    function PanelIcon({ size, active }) {
       const state = useSnapshot()
       const status = effectiveStatus(state)
       const badge = state.unread > 0 || status === 'offline'
       return h(
         'span',
-        { className: 'dsn-surface dsn-icon-wrap' },
+        { className: 'dsn-surface dsn-icon-wrap', 'data-active': active ? 'true' : 'false' },
         h('style', null, CSS),
         h(NoteIcon, { size: size ?? 16 }),
         badge
@@ -1438,7 +1536,7 @@ ${PALETTE_CSS}
                   title: t('kindHint'),
                   onClick: () => store.setKind(state.kind === 'memory' ? 'note' : 'memory'),
                 },
-                '★',
+                h(StarIcon, { filled: state.kind === 'memory', size: 13 }),
                 t(state.kind === 'memory' ? 'kindMemory' : 'kindNote'),
               ),
               h(
@@ -1635,7 +1733,7 @@ ${PALETTE_CSS}
               'aria-label': t('back'),
               title: t('back'),
               onClick: () => { void store.done() },
-            }, '←')
+            }, h(BackIcon, { size: 18 }))
             : h('div', { className: 'dsn-badge' }, h(NoteIcon, { size: 17 })),
           h(
             'div',
@@ -1647,7 +1745,7 @@ ${PALETTE_CSS}
             'div',
             { className: 'dsn-head-actions' },
             editing
-              ? h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => { void store.done() } }, t('done'))
+              ? h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => { void store.done() } }, h(CheckIcon, { size: 14 }), t('done'))
               : [
                 h('button', {
                   key: 'invite',
@@ -1671,7 +1769,7 @@ ${PALETTE_CSS}
               h('span', { className: 'dsn-count' }, t('items', { n: tabCount })),
               state.tab === 'today'
                 ? null
-                : h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => store.create() }, addLabel),
+                : h('button', { type: 'button', className: 'dsn-btn dsn-btn-primary', onClick: () => store.create() }, h(PlusIcon, { size: 14 }), addLabel),
             ),
             state.tab === 'tasks'
               ? h(TaskBoard, { state })
